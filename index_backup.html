@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory QR</title>
+<style>
+*{box-sizing:border-box}
+body{
+margin:0;padding:20px;font-family:Arial;color:white;
+background:linear-gradient(135deg,#090b18,#30104f,#071d27);
+text-align:center
+}
+.container{max-width:900px;margin:auto}
+.logo{font-size:25px;color:#ff62c7;font-weight:bold;margin-top:25px}
+h1{
+font-size:48px;
+background:linear-gradient(90deg,#ff55c8,#9b6cff,#55ddff);
+-webkit-background-clip:text;color:transparent
+}
+p{color:#bbb;font-size:18px}
+.btn{
+display:inline-block;padding:15px 25px;margin:8px;
+border:0;border-radius:18px;
+background:linear-gradient(90deg,#ff35b5,#815cff);
+color:white;font-size:16px;font-weight:bold
+}
+.card{
+margin:22px 0;padding:25px;border-radius:25px;
+background:#ffffff10;border:1px solid #ffffff22
+}
+input{display:none}
+.gallery{
+display:grid;grid-template-columns:repeat(2,1fr);gap:12px
+}
+.gallery img{
+width:100%;height:200px;object-fit:cover;border-radius:18px
+}
+video{width:100%;max-width:700px;border-radius:20px}
+textarea{
+width:100%;height:130px;padding:15px;
+background:#090b18;color:white;border:1px solid #ffffff33;
+border-radius:15px;font-size:16px
+}
+.qr{display:none}
+.qr img{width:230px;background:white;padding:10px;border-radius:15px}
+.whatsapp{
+display:inline-block;background:#25D366;color:white;
+padding:15px 25px;border-radius:18px;text-decoration:none;
+font-weight:bold
+}
+.footer{margin:35px 0;color:#888}
+.creator{color:#ff62c7;font-weight:bold}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="logo">♥ MEMORY QR</div>
+
+<h1>Your Memories, Forever.</h1>
+
+<p>A special place for your beautiful moments.</p>
+
+<button class="btn" onclick="createMemory()">✨ Create New Memory</button>
+
+<br>
+
+<label class="btn">
+📷 Camera
+<input type="file" accept="image/*" capture="environment" onchange="addPhoto(this.files[0])">
+</label>
+
+<label class="btn">
+🖼️ Gallery
+<input type="file" accept="image/*" multiple onchange="addPhotos(this.files)">
+</label>
+
+<div class="card">
+<h2>📸 Beautiful Moments</h2>
+<div id="gallery" class="gallery"></div>
+</div>
+
+<div class="card">
+<h2>🎥 Memory Video</h2>
+
+<label class="btn">
+🎬 Choose Video
+<input type="file" accept="video/*" onchange="addVideo(this.files[0])">
+</label>
+
+<div id="video"></div>
+</div>
+
+<div class="card">
+<h2>💌 Special Message</h2>
+
+<textarea id="message" placeholder="Write your special message..."></textarea>
+
+<br>
+
+<button class="btn" onclick="saveMessage()">💾 Save Message</button>
+
+<p id="status"></p>
+</div>
+
+<div id="qrBox" class="card qr">
+<h2>🎉 Your Memory QR</h2>
+
+<img id="qr">
+
+<p>Memory ID: <b id="id"></b></p>
+
+<a id="link" class="btn" target="_blank">❤️ Open Memory</a>
+</div>
+
+<div class="card">
+
+<h2>📞 Contact Us</h2>
+
+<p>For Memory QR orders and information</p>
+
+<a class="whatsapp"
+href="https://wa.me/918407097027?text=Hello%20Memory%20QR%2C%20I%20want%20to%20know%20more."
+target="_blank">
+
+💬 WhatsApp: 8407097027
+
+</a>
+
+</div>
+
+<div class="footer">
+
+<div class="creator">
+This site is made by Aquib Khan ❤️
+</div>
+
+<br>
+
+Memory QR • Made for memories that matter
+
+</div>
+
+</div>
+
+<script>
+
+let memoryId=null;
+
+async function createMemory(){
+
+let r=await fetch("/create-memory",{method:"POST"});
+let d=await r.json();
+
+memoryId=d.memory_id;
+
+document.getElementById("id").textContent=memoryId;
+document.getElementById("qr").src=d.qr;
+document.getElementById("link").href=d.memory_url;
+document.getElementById("qrBox").style.display="block";
+
+}
+
+async function upload(file){
+
+if(!memoryId){
+alert("First Create New Memory");
+return false;
+}
+
+let f=new FormData();
+
+f.append("memory_id",memoryId);
+f.append("files",file);
+
+let r=await fetch("/upload",{method:"POST",body:f});
+let d=await r.json();
+
+return d.success;
+}
+
+async function addPhoto(file){
+
+if(!file)return;
+
+if(await upload(file)){
+
+let reader=new FileReader();
+
+reader.onload=e=>{
+
+let img=document.createElement("img");
+img.src=e.target.result;
+
+document.getElementById("gallery").appendChild(img);
+
+};
+
+reader.readAsDataURL(file);
+
+}
+
+}
+
+async function addPhotos(files){
+
+for(let file of files){
+await addPhoto(file);
+}
+
+}
+
+async function addVideo(file){
+
+if(!file)return;
+
+if(await upload(file)){
+
+let url=URL.createObjectURL(file);
+
+document.getElementById("video").innerHTML=
+`<video controls playsinline src="${url}"></video>`;
+
+}
+
+}
+
+async function saveMessage(){
+
+if(!memoryId){
+alert("First Create New Memory");
+return;
+}
+
+let message=document.getElementById("message").value;
+
+let r=await fetch("/save-message",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+memory_id:memoryId,
+message:message
+})
+
+});
+
+let d=await r.json();
+
+if(d.success){
+document.getElementById("status").textContent="✓ Message Saved";
+}
+
+}
+
+</script>
+
+</body>
+</html>
