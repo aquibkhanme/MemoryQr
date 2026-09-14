@@ -19,7 +19,12 @@ body{
     min-height:100vh;
 
     background:
-    radial-gradient(circle at top,#303d78 0%,#10152f 40%,#050713 100%);
+    radial-gradient(
+        circle at top,
+        #303d78 0%,
+        #10152f 40%,
+        #050713 100%
+    );
 }
 
 .container{
@@ -89,7 +94,11 @@ h2{
     border-radius:17px;
 
     background:
-    linear-gradient(135deg,#6757e8,#a45de8);
+    linear-gradient(
+        135deg,
+        #6757e8,
+        #a45de8
+    );
 
     color:white;
 
@@ -153,7 +162,11 @@ textarea::placeholder{
     margin-top:15px;
 
     background:
-    linear-gradient(135deg,#ff4f81,#ff795d);
+    linear-gradient(
+        135deg,
+        #ff4f81,
+        #ff795d
+    );
 
     color:white;
 
@@ -317,7 +330,9 @@ multiple>
 </label>
 
 
-<label class="option" onclick="openDiary()">
+<label
+class="option"
+onclick="openDiary()">
 
 📔 Personal Diary
 
@@ -401,9 +416,7 @@ let uploadedVideos = 0;
 let diarySaved = false;
 
 
-/* --------------------------------
-   CREATE MEMORY ID
--------------------------------- */
+/* CREATE MEMORY */
 
 async function createMemory(){
 
@@ -446,9 +459,7 @@ async function createMemory(){
 }
 
 
-/* --------------------------------
-   UPLOAD FILE
--------------------------------- */
+/* UPLOAD ONE FILE */
 
 async function uploadFile(file){
 
@@ -461,11 +472,6 @@ async function uploadFile(file){
 
     const formData =
         new FormData();
-
-    /*
-       IMPORTANT:
-       app.py reads "file"
-    */
 
     formData.append(
         "file",
@@ -491,11 +497,9 @@ async function uploadFile(file){
 
 
         if(!response.ok){
-
             throw new Error(
                 "Upload failed"
             );
-
         }
 
 
@@ -517,24 +521,16 @@ async function uploadFile(file){
 
 
         if(
-            file.type.startsWith(
-                "image/"
-            )
+            file.type.startsWith("image/")
         ){
-
             uploadedPhotos++;
-
         }
 
 
         if(
-            file.type.startsWith(
-                "video/"
-            )
+            file.type.startsWith("video/")
         ){
-
             uploadedVideos++;
-
         }
 
 
@@ -556,43 +552,50 @@ async function uploadFile(file){
 }
 
 
-/* --------------------------------
-   UPLOAD MULTIPLE FILES
--------------------------------- */
+/* UPLOAD MULTIPLE FILES */
 
 async function uploadFiles(files){
 
-    if(!files || files.length===0){
+    if(!files || files.length === 0){
         return;
     }
 
 
-    document.getElementById(
-        "status"
-    ).innerText =
-        "Saving your files...";
+    const status =
+        document.getElementById(
+            "status"
+        );
+
+
+    status.innerText =
+        "Saving selected files...";
+
+
+    let successCount = 0;
 
 
     for(
         const file of files
     ){
 
-        await uploadFile(file);
+        const success =
+            await uploadFile(file);
+
+        if(success){
+            successCount++;
+        }
 
     }
 
 
-    document.getElementById(
-        "status"
-    ).innerText =
-        "All selected files are saved ❤️";
+    status.innerText =
+        successCount +
+        " file(s) saved successfully ❤️";
 
 }
 
 
-/* --------------------------------
-   CAMERA
--------------------------------- */
+/* CAMERA */
 
 document.getElementById(
     "cameraInput"
@@ -603,9 +606,7 @@ document.getElementById(
         if(this.files.length){
 
             await uploadFiles(
-                Array.from(
-                    this.files
-                )
+                Array.from(this.files)
             );
 
         }
@@ -616,9 +617,7 @@ document.getElementById(
 );
 
 
-/* --------------------------------
-   GALLERY
--------------------------------- */
+/* GALLERY - MULTIPLE PHOTOS */
 
 document.getElementById(
     "galleryInput"
@@ -628,13 +627,25 @@ document.getElementById(
 
         if(this.files.length){
 
+            /*
+             * IMPORTANT:
+             * multiple photos are converted
+             * into an array and uploaded one by one
+             */
+
+            const selectedFiles =
+                Array.from(this.files);
+
             await uploadFiles(
-                Array.from(
-                    this.files
-                )
+                selectedFiles
             );
 
         }
+
+        /*
+         * Reset input so the user can
+         * select the same photos again later
+         */
 
         this.value = "";
 
@@ -642,9 +653,7 @@ document.getElementById(
 );
 
 
-/* --------------------------------
-   VIDEO
--------------------------------- */
+/* VIDEO - MULTIPLE VIDEOS */
 
 document.getElementById(
     "videoInput"
@@ -655,9 +664,7 @@ document.getElementById(
         if(this.files.length){
 
             await uploadFiles(
-                Array.from(
-                    this.files
-                )
+                Array.from(this.files)
             );
 
         }
@@ -668,13 +675,12 @@ document.getElementById(
 );
 
 
-/* --------------------------------
-   FILE STATUS
--------------------------------- */
+/* FILE STATUS */
 
 function updateFileStatus(){
 
     let text = "";
+
 
     if(
         uploadedPhotos === 0 &&
@@ -698,15 +704,14 @@ function updateFileStatus(){
 
     }
 
+
     document.getElementById(
         "fileStatus"
     ).innerText = text;
 }
 
 
-/* --------------------------------
-   DIARY
--------------------------------- */
+/* DIARY */
 
 function openDiary(){
 
@@ -725,9 +730,7 @@ function openDiary(){
 }
 
 
-/* --------------------------------
-   SAVE DIARY
--------------------------------- */
+/* SAVE DIARY */
 
 async function saveDiary(){
 
@@ -807,9 +810,7 @@ async function saveDiary(){
 }
 
 
-/* --------------------------------
-   GENERATE QR
--------------------------------- */
+/* GENERATE QR */
 
 async function generateMemoryQR(){
 
@@ -831,10 +832,6 @@ async function generateMemoryQR(){
         "Saving everything...";
 
 
-    /*
-       Make sure memory exists
-    */
-
     const ready =
         await createMemory();
 
@@ -846,10 +843,6 @@ async function generateMemoryQR(){
     }
 
 
-    /*
-       Save diary
-    */
-
     const diaryOK =
         await saveDiary();
 
@@ -860,11 +853,6 @@ async function generateMemoryQR(){
         return;
     }
 
-
-    /*
-       QR is generated only
-       after files + diary are saved
-    */
 
     status.innerText =
         "Generating your Memory QR...";
