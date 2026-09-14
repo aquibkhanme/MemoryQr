@@ -1,33 +1,48 @@
 import os
-import json
 import secrets
-from datetime import datetime, timedelta
+import shutil
 
-import resend
 import qrcode
 
 from flask import (
-    Flask, request, jsonify, send_from_directory,
-    render_template_string, redirect, url_for,
-    session, flash
+    Flask,
+    request,
+    jsonify,
+    send_from_directory,
+    render_template_string,
+    redirect,
+    url_for,
+    session,
+    flash
 )
 
-from werkzeug.security import (
-    generate_password_hash,
-    check_password_hash
-)
+from werkzeug.utils import secure_filename
 
 
 app = Flask(__name__)
 
 # =========================
-# BASIC SETTINGS
+# SECURITY
 # =========================
 
 app.secret_key = os.environ.get(
     "SECRET_KEY",
-    "change-this-secret-key-memoryqr"
+    "change-this-secret-key"
 )
+
+ADMIN_USERNAME = os.environ.get(
+    "ADMIN_USERNAME",
+    "admin"
+)
+
+ADMIN_PASSWORD = os.environ.get(
+    "ADMIN_PASSWORD",
+    "MemoryQR@123"
+)
+
+# =========================
+# FOLDERS
+# =========================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -47,182 +62,8 @@ os.makedirs(QR_DIR, exist_ok=True)
 
 
 # =========================
-# ADMIN SETTINGS
+# MEMORY FUNCTIONS
 # =========================
-
-ADMIN_USERNAME = os.environ.get(
-    "ADMIN_USERNAME",
-    "admin"
-)
-
-ADMIN_PASSWORD = os.environ.get(
-    "ADMIN_PASSWORD",
-    "MemoryQR@123"
-)
-
-ADMIN_AUTH_FILE = os.path.join(
-    BASE_DIR,
-    "admin_auth.json"
-)
-
-
-def get_admin_auth():
-
-    if os.path.exists(ADMIN_AUTH_FILE):
-
-        try:
-
-            with open(
-                ADMIN_AUTH_FILE,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
-                return json.load(f)
-
-        except Exception:
-
-            pass
-
-    return {
-        "username": ADMIN_USERNAME,
-        "password_hash": generate_password_hash(
-            ADMIN_PASSWORD
-        )
-    }
-
-
-def save_admin_auth(username, password):
-
-    data = {
-        "username": username,
-        "password_hash": generate_password_hash(
-            password
-        )
-    }
-
-    with open(
-        ADMIN_AUTH_FILE,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(data, f)
-
-
-# =========================
-# RESEND EMAIL SETTINGS
-# =========================
-
-RESEND_API_KEY = os.environ.get(
-    "RESEND_API_KEY",
-    ""
-)
-
-RECOVERY_EMAIL = os.environ.get(
-    "RECOVERY_EMAIL",
-    ""
-)
-
-MAIL_FROM = os.environ.get(
-    "MAIL_FROM",
-    "onboarding@resend.dev"
-)
-
-
-def send_recovery_email(email, reset_url):
-
-    if not RESEND_API_KEY:
-
-        raise Exception(
-            "RESEND_API_KEY is not configured."
-        )
-
-    if not RECOVERY_EMAIL:
-
-        raise Exception(
-            "RECOVERY_EMAIL is not configured."
-        )
-
-    resend.api_key = RESEND_API_KEY
-
-    resend.Emails.send({
-
-        "from": MAIL_FROM,
-
-        "to": [email],
-
-        "subject":
-            "Memory QR - Admin Password Reset",
-
-        "html": f"""
-        <div style="
-            font-family:Arial,sans-serif;
-            max-width:600px;
-            margin:auto;
-            padding:30px;
-            background:#111827;
-            color:white;
-            border-radius:20px;
-        ">
-
-        <h2>🔐 Memory QR</h2>
-
-        <p>
-        A password reset was requested
-        for your Memory QR admin account.
-        </p>
-
-        <p>
-        Click the button below to create
-        a new password.
-        </p>
-
-        <a href="{reset_url}"
-        style="
-        display:inline-block;
-        padding:14px 22px;
-        background:#ffffff;
-        color:#111111;
-        text-decoration:none;
-        border-radius:12px;
-        font-weight:bold;
-        ">
-        Reset Password
-        </a>
-
-        <p style="margin-top:25px;">
-        This link will expire in 30 minutes.
-        </p>
-
-        <p>
-        If you did not request this,
-        you can safely ignore this email.
-        </p>
-
-        </div>
-        """
-    })
-
-
-# =========================
-# HELPERS
-# =========================
-
-def create_memory_folder(memory_id):
-
-    folder = os.path.join(
-        MEMORIES_DIR,
-        memory_id
-    )
-
-    os.makedirs(
-        folder,
-        exist_ok=True
-    )
-
-    return folder
-
 
 def generate_memory_id():
 
@@ -236,15 +77,19 @@ def generate_memory_id():
         )
 
         if not os.path.exists(folder):
-
             return memory_id
 
 
-def admin_required():
+def create_memory_folder(memory_id):
 
-    return session.get(
-        "admin_logged_in"
-    ) is True
+    folder = os.path.join(
+        MEMORIES_DIR,
+        memory_id
+    )
+
+    os.makedirs(folder, exist_ok=True)
+
+    return folder
 
 
 # =========================
@@ -276,22 +121,26 @@ def create_memory():
         memory_id
     )
 
+    message_file = os.path.join(
+        folder,
+        "message.txt"
+    )
+
     with open(
-        os.path.join(
-            folder,
-            "message.txt"
-        ),
+        message_file,
         "w",
         encoding="utf-8"
     ) as f:
 
         f.write("")
 
-    qr = qrcode.make(
+    memory_url = (
         request.host_url.rstrip("/")
         + "/memory/"
         + memory_id
     )
+
+    qr = qrcode.make(memory_url)
 
     qr_path = os.path.join(
         QR_DIR,
@@ -303,15 +152,12 @@ def create_memory():
     return jsonify({
         "success": True,
         "memory_id": memory_id,
-        "qr":
-            "/static/qr/"
-            + memory_id
-            + ".png"
+        "qr": "/static/qr/" + memory_id + ".png"
     })
 
 
 # =========================
-# UPLOAD
+# UPLOAD FILES
 # =========================
 
 @app.route(
@@ -332,21 +178,21 @@ def upload_file(memory_id):
             "error": "Memory not found"
         }), 404
 
-    files = request.files.getlist(
-        "file"
-    )
+    files = request.files.getlist("file")
 
     uploaded = []
 
     for file in files:
 
         if not file or not file.filename:
-
             continue
 
-        filename = os.path.basename(
+        filename = secure_filename(
             file.filename
         )
+
+        if not filename:
+            continue
 
         save_path = os.path.join(
             folder,
@@ -364,7 +210,7 @@ def upload_file(memory_id):
 
 
 # =========================
-# SAVE MESSAGE
+# SAVE PERSONAL MESSAGE
 # =========================
 
 @app.route(
@@ -401,11 +247,13 @@ def save_message(memory_id):
             "error": "Message is too long"
         }), 400
 
+    message_file = os.path.join(
+        folder,
+        "message.txt"
+    )
+
     with open(
-        os.path.join(
-            folder,
-            "message.txt"
-        ),
+        message_file,
         "w",
         encoding="utf-8"
     ) as f:
@@ -440,7 +288,6 @@ def memory_page(memory_id):
     for filename in os.listdir(folder):
 
         if filename == "message.txt":
-
             continue
 
         path = os.path.join(
@@ -452,19 +299,17 @@ def memory_page(memory_id):
 
             files.append(filename)
 
-    message_path = os.path.join(
+    message_file = os.path.join(
         folder,
         "message.txt"
     )
 
     message = ""
 
-    if os.path.exists(
-        message_path
-    ):
+    if os.path.exists(message_file):
 
         with open(
-            message_path,
+            message_file,
             "r",
             encoding="utf-8"
         ) as f:
@@ -473,68 +318,140 @@ def memory_page(memory_id):
 
     html = """
 <!DOCTYPE html>
-<html>
+
+<html lang="en">
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+>
 
-<title>Memory QR</title>
+<title>Your Memory ❤️</title>
 
 <style>
 
+*{
+    box-sizing:border-box;
+}
+
 body{
-margin:0;
-background:linear-gradient(
-135deg,
-#080b18,
-#17152e,
-#241238
-);
-color:white;
-font-family:Arial,sans-serif;
-padding:25px;
+
+    margin:0;
+
+    font-family:
+    Arial,
+    sans-serif;
+
+    background:
+    linear-gradient(
+        135deg,
+        #090b18,
+        #17102c,
+        #0b1830
+    );
+
+    color:white;
+
+    min-height:100vh;
 }
 
 .container{
-max-width:900px;
-margin:auto;
+
+    width:92%;
+
+    max-width:900px;
+
+    margin:auto;
+
+    padding:30px 0 50px;
+}
+
+.card{
+
+    background:
+    rgba(255,255,255,0.08);
+
+    border:
+    1px solid
+    rgba(255,255,255,0.15);
+
+    border-radius:25px;
+
+    padding:25px;
+
+    margin-bottom:25px;
+
+    backdrop-filter:blur(12px);
+
+    box-shadow:
+    0 20px 60px
+    rgba(0,0,0,0.35);
 }
 
 h1{
-text-align:center;
+
+    text-align:center;
+
+    font-size:35px;
+
+    margin-bottom:25px;
 }
 
 .message{
-background:rgba(255,255,255,.08);
-padding:20px;
-border-radius:20px;
-margin:20px 0;
-white-space:pre-wrap;
-overflow-wrap:anywhere;
-line-height:1.7;
+
+    white-space:pre-wrap;
+
+    overflow-wrap:anywhere;
+
+    line-height:1.7;
+
+    font-size:17px;
 }
 
 .gallery{
-display:grid;
-grid-template-columns:
-repeat(auto-fit,minmax(250px,1fr));
-gap:15px;
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(auto-fit,minmax(150px,1fr));
+
+    gap:15px;
 }
 
-img,video{
-width:100%;
-border-radius:18px;
-display:block;
+.gallery img,
+.gallery video{
+
+    width:100%;
+
+    border-radius:18px;
+
+    display:block;
+
+    background:#000;
+}
+
+.empty{
+
+    text-align:center;
+
+    opacity:.7;
+
+    padding:30px;
 }
 
 .footer{
-text-align:center;
-margin-top:40px;
-opacity:.7;
+
+    text-align:center;
+
+    opacity:.7;
+
+    margin-top:30px;
+
+    font-size:14px;
 }
 
 </style>
@@ -545,50 +462,88 @@ opacity:.7;
 
 <div class="container">
 
-<h1>❤️ Your Memory</h1>
+    <div class="card">
 
-{% if message %}
+        <h1>
+            ❤️ Your Memory
+        </h1>
 
-<div class="message">
-{{ message }}
-</div>
+        {% if message %}
 
-{% endif %}
+        <div class="message">
+            {{ message }}
+        </div>
 
-<div class="gallery">
+        {% else %}
 
-{% for file in files %}
+        <div class="empty">
+            No personal message added.
+        </div>
 
-{% set lower = file.lower() %}
+        {% endif %}
 
-{% if lower.endswith('.jpg')
-or lower.endswith('.jpeg')
-or lower.endswith('.png')
-or lower.endswith('.webp') %}
+    </div>
 
-<img
-src="/memories/{{ memory_id }}/{{ file }}">
 
-{% elif lower.endswith('.mp4')
-or lower.endswith('.webm')
-or lower.endswith('.mov') %}
+    <div class="card">
 
-<video controls>
+        <h2>
+            📸 Memories
+        </h2>
 
-<source
-src="/memories/{{ memory_id }}/{{ file }}">
+        {% if files %}
 
-</video>
+        <div class="gallery">
 
-{% endif %}
+            {% for file in files %}
 
-{% endfor %}
+                {% if file.lower().endswith(
+                    ('.jpg','.jpeg','.png','.webp')
+                ) %}
 
-</div>
+                    <img
+                    src="/memories/{{ memory_id }}/{{ file }}"
+                    loading="lazy"
+                    >
 
-<div class="footer">
-This site is made by Aquib Khan ❤️
-</div>
+                {% elif file.lower().endswith(
+                    ('.mp4','.webm','.mov')
+                ) %}
+
+                    <video
+                    controls
+                    playsinline
+                    preload="metadata"
+                    >
+
+                    <source
+                    src="/memories/{{ memory_id }}/{{ file }}"
+                    >
+
+                    </video>
+
+                {% endif %}
+
+            {% endfor %}
+
+        </div>
+
+        {% else %}
+
+        <div class="empty">
+            No photos or videos yet.
+        </div>
+
+        {% endif %}
+
+    </div>
+
+
+    <div class="footer">
+
+        This site is made by Aquib Khan ❤️
+
+    </div>
 
 </div>
 
@@ -606,7 +561,7 @@ This site is made by Aquib Khan ❤️
 
 
 # =========================
-# SERVE FILES
+# SERVE MEMORY FILE
 # =========================
 
 @app.route(
@@ -638,6 +593,14 @@ def serve_memory_file(
 )
 def admin_login():
 
+    if session.get(
+        "admin_logged_in"
+    ) is True:
+
+        return redirect(
+            url_for("admin_dashboard")
+        )
+
     if request.method == "POST":
 
         username = request.form.get(
@@ -650,125 +613,239 @@ def admin_login():
             ""
         )
 
-        auth = get_admin_auth()
-
         if (
-            username == auth["username"]
-            and check_password_hash(
-                auth["password_hash"],
-                password
+            secrets.compare_digest(
+                username,
+                ADMIN_USERNAME
+            )
+            and
+            secrets.compare_digest(
+                password,
+                ADMIN_PASSWORD
             )
         ):
 
-            session[
-                "admin_logged_in"
-            ] = True
+            session.clear()
+
+            session["admin_logged_in"] = True
 
             return redirect(
-                url_for(
-                    "admin_dashboard"
-                )
+                url_for("admin_dashboard")
             )
 
         flash(
             "Invalid username or password."
         )
 
-    return """
+    return render_template_string("""
 <!DOCTYPE html>
+
 <html>
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+>
 
-<title>Memory QR Admin Login</title>
+<title>Admin Login - Memory QR</title>
 
 <style>
 
-body{
-margin:0;
-min-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-background:
-linear-gradient(
-135deg,
-#080b18,
-#1b1235,
-#32124b
-);
-color:white;
-font-family:Arial,sans-serif;
+*{
+    box-sizing:border-box;
 }
 
-.box{
-width:90%;
-max-width:400px;
-background:rgba(255,255,255,.09);
-backdrop-filter:blur(20px);
-padding:30px;
-border-radius:25px;
-box-shadow:
-0 20px 60px rgba(0,0,0,.5);
+body{
+
+    margin:0;
+
+    min-height:100vh;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    padding:20px;
+
+    font-family:Arial,sans-serif;
+
+    color:white;
+
+    background:
+    linear-gradient(
+        135deg,
+        #070914,
+        #17102e,
+        #091d35
+    );
+}
+
+.login-box{
+
+    width:100%;
+
+    max-width:420px;
+
+    padding:32px;
+
+    border-radius:25px;
+
+    background:
+    rgba(255,255,255,.08);
+
+    border:
+    1px solid
+    rgba(255,255,255,.16);
+
+    box-shadow:
+    0 25px 70px
+    rgba(0,0,0,.45);
+
+    backdrop-filter:blur(15px);
+}
+
+.logo{
+
+    text-align:center;
+
+    font-size:42px;
+
+    margin-bottom:8px;
 }
 
 h1{
-text-align:center;
+
+    text-align:center;
+
+    margin:0 0 8px;
+
+    font-size:28px;
+}
+
+.subtitle{
+
+    text-align:center;
+
+    opacity:.7;
+
+    margin-bottom:28px;
+}
+
+label{
+
+    display:block;
+
+    margin-bottom:8px;
+
+    font-weight:bold;
 }
 
 input{
-width:100%;
-box-sizing:border-box;
-padding:15px;
-margin:8px 0;
-border:none;
-border-radius:12px;
-background:rgba(255,255,255,.12);
-color:white;
-outline:none;
-}
 
-button{
-width:100%;
-padding:15px;
-margin-top:10px;
-border:none;
-border-radius:12px;
-background:#ffffff;
-color:#111;
-font-weight:bold;
-cursor:pointer;
+    width:100%;
+
+    padding:14px;
+
+    border:none;
+
+    outline:none;
+
+    border-radius:12px;
+
+    margin-bottom:18px;
+
+    background:
+    rgba(255,255,255,.1);
+
+    color:white;
+
+    border:
+    1px solid
+    rgba(255,255,255,.15);
+
+    font-size:16px;
 }
 
 .password-box{
-position:relative;
+
+    position:relative;
 }
 
-.toggle{
-position:absolute;
-right:12px;
-top:18px;
-cursor:pointer;
+.password-box input{
+
+    padding-right:50px;
+}
+
+.eye{
+
+    position:absolute;
+
+    right:15px;
+
+    top:13px;
+
+    cursor:pointer;
+
+    font-size:20px;
+}
+
+button{
+
+    width:100%;
+
+    padding:14px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:
+    linear-gradient(
+        135deg,
+        #7c3aed,
+        #2563eb
+    );
+
+    color:white;
+
+    font-size:16px;
+
+    font-weight:bold;
+
+    cursor:pointer;
 }
 
 .error{
-color:#ff8585;
-text-align:center;
-margin:10px 0;
+
+    padding:12px;
+
+    margin-bottom:18px;
+
+    border-radius:10px;
+
+    background:
+    rgba(255,60,60,.15);
+
+    color:#ffb4b4;
+
+    text-align:center;
 }
 
-.forgot{
-text-align:center;
-margin-top:18px;
-}
+.security{
 
-a{
-color:white;
+    text-align:center;
+
+    margin-top:22px;
+
+    font-size:13px;
+
+    opacity:.55;
 }
 
 </style>
@@ -777,63 +854,83 @@ color:white;
 
 <body>
 
-<div class="box">
+<div class="login-box">
 
-<h1>🔐 Admin Login</h1>
+    <div class="logo">
+        🔐
+    </div>
 
-{% with messages =
-get_flashed_messages() %}
+    <h1>
+        Admin Login
+    </h1>
 
-{% if messages %}
+    <div class="subtitle">
+        Memory QR Management
+    </div>
 
-<div class="error">
-{{ messages[0] }}
-</div>
+    {% with messages = get_flashed_messages() %}
 
-{% endif %}
+        {% if messages %}
 
-{% endwith %}
+            <div class="error">
+                {{ messages[0] }}
+            </div>
 
-<form method="POST">
+        {% endif %}
 
-<input
-type="text"
-name="username"
-placeholder="Username"
-required
-autocomplete="username">
+    {% endwith %}
 
-<div class="password-box">
+    <form
+    method="POST"
+    >
 
-<input
-id="password"
-type="password"
-name="password"
-placeholder="Password"
-required
-autocomplete="current-password">
+        <label>
+            Username
+        </label>
 
-<span
-class="toggle"
-onclick="togglePassword()">
-👁️
-</span>
+        <input
+        type="text"
+        name="username"
+        placeholder="Enter username"
+        autocomplete="username"
+        required
+        >
 
-</div>
+        <label>
+            Password
+        </label>
 
-<button type="submit">
-Login
-</button>
+        <div class="password-box">
 
-</form>
+            <input
+            id="password"
+            type="password"
+            name="password"
+            placeholder="Enter password"
+            autocomplete="current-password"
+            required
+            >
 
-<div class="forgot">
+            <span
+            class="eye"
+            onclick="togglePassword()"
+            >
+                👁️
+            </span>
 
-<a href="/admin/forgot">
-Forgot Password?
-</a>
+        </div>
 
-</div>
+        <button
+        type="submit"
+        >
+            Login
+        </button>
+
+    </form>
+
+    <div class="security">
+        🔒 Secure Admin Area
+    </div>
 
 </div>
 
@@ -841,15 +938,22 @@ Forgot Password?
 
 function togglePassword(){
 
-const input =
-document.getElementById(
-"password"
-);
+    const password =
+        document.getElementById(
+            "password"
+        );
 
-input.type =
-input.type === "password"
-? "text"
-: "password";
+    if(
+        password.type === "password"
+    ){
+
+        password.type = "text";
+
+    }else{
+
+        password.type = "password";
+
+    }
 
 }
 
@@ -858,422 +962,7 @@ input.type === "password"
 </body>
 
 </html>
-"""
-
-
-# =========================
-# FORGOT PASSWORD
-# =========================
-
-@app.route(
-    "/admin/forgot",
-    methods=["GET", "POST"]
-)
-def admin_forgot():
-
-    error = ""
-
-    success = ""
-
-    if request.method == "POST":
-
-        email = request.form.get(
-            "email",
-            ""
-        ).strip().lower()
-
-        if not RECOVERY_EMAIL:
-
-            error = (
-                "Recovery email is not configured."
-            )
-
-        elif (
-            email !=
-            RECOVERY_EMAIL.lower()
-        ):
-
-            error = (
-                "Recovery email doesn't match."
-            )
-
-        else:
-
-            token = secrets.token_urlsafe(
-                32
-            )
-
-            expires = (
-                datetime.utcnow()
-                + timedelta(minutes=30)
-            )
-
-            session[
-                "reset_token"
-            ] = token
-
-            session[
-                "reset_expires"
-            ] = expires.isoformat()
-
-            reset_url = url_for(
-                "admin_reset",
-                token=token,
-                _external=True
-            )
-
-            try:
-
-                send_recovery_email(
-                    email,
-                    reset_url
-                )
-
-                success = (
-                    "Recovery email sent. "
-                    "Check your Gmail inbox."
-                )
-
-            except Exception as e:
-
-                print(
-                    "EMAIL ERROR:",
-                    repr(e)
-                )
-
-                error = (
-                    "Unable to send recovery email: "
-                    + str(e)
-                )
-
-    return f"""
-<!DOCTYPE html>
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
-
-<title>Forgot Password</title>
-
-<style>
-
-body{{
-margin:0;
-min-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-background:
-linear-gradient(
-135deg,
-#080b18,
-#1b1235,
-#32124b
-);
-color:white;
-font-family:Arial,sans-serif;
-}}
-
-.box{{
-width:90%;
-max-width:420px;
-padding:30px;
-border-radius:25px;
-background:rgba(255,255,255,.09);
-}}
-
-input{{
-width:100%;
-box-sizing:border-box;
-padding:15px;
-border:0;
-border-radius:12px;
-margin:10px 0;
-}}
-
-button{{
-width:100%;
-padding:15px;
-border:0;
-border-radius:12px;
-font-weight:bold;
-}}
-
-.error{{
-color:#ff7777;
-margin:12px 0;
-word-break:break-word;
-}}
-
-.success{{
-color:#72ff9b;
-margin:12px 0;
-}}
-
-a{{
-color:white;
-}}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="box">
-
-<h2>🔑 Forgot Password</h2>
-
-<p>
-Enter your recovery Gmail address.
-</p>
-
-{"<div class='error'>" + error + "</div>" if error else ""}
-
-{"<div class='success'>" + success + "</div>" if success else ""}
-
-<form method="POST">
-
-<input
-type="email"
-name="email"
-placeholder="Recovery Gmail"
-required>
-
-<button type="submit">
-Send Recovery Email
-</button>
-
-</form>
-
-<p>
-
-<a href="/admin/login">
-← Back to Login
-</a>
-
-</p>
-
-</div>
-
-</body>
-
-</html>
-"""
-
-
-# =========================
-# RESET PASSWORD
-# =========================
-
-@app.route(
-    "/admin/reset/<token>",
-    methods=["GET", "POST"]
-)
-def admin_reset(token):
-
-    saved_token = session.get(
-        "reset_token"
-    )
-
-    expires_text = session.get(
-        "reset_expires"
-    )
-
-    if (
-        not saved_token
-        or token != saved_token
-    ):
-
-        return (
-            "Invalid or expired reset link.",
-            400
-        )
-
-    if not expires_text:
-
-        return (
-            "Invalid reset link.",
-            400
-        )
-
-    try:
-
-        expires = datetime.fromisoformat(
-            expires_text
-        )
-
-    except Exception:
-
-        return (
-            "Invalid reset link.",
-            400
-        )
-
-    if datetime.utcnow() > expires:
-
-        session.pop(
-            "reset_token",
-            None
-        )
-
-        session.pop(
-            "reset_expires",
-            None
-        )
-
-        return (
-            "Reset link has expired.",
-            400
-        )
-
-    if request.method == "POST":
-
-        password = request.form.get(
-            "password",
-            ""
-        )
-
-        confirm = request.form.get(
-            "confirm_password",
-            ""
-        )
-
-        if len(password) < 8:
-
-            return (
-                "Password must be at least 8 characters.",
-                400
-            )
-
-        if password != confirm:
-
-            return (
-                "Passwords do not match.",
-                400
-            )
-
-        auth = get_admin_auth()
-
-        save_admin_auth(
-            auth["username"],
-            password
-        )
-
-        session.pop(
-            "reset_token",
-            None
-        )
-
-        session.pop(
-            "reset_expires",
-            None
-        )
-
-        return redirect(
-            url_for(
-                "admin_login"
-            )
-        )
-
-    return """
-<!DOCTYPE html>
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
-
-<title>Reset Password</title>
-
-<style>
-
-body{
-margin:0;
-min-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-background:
-linear-gradient(
-135deg,
-#080b18,
-#1b1235,
-#32124b
-);
-color:white;
-font-family:Arial,sans-serif;
-}
-
-.box{
-width:90%;
-max-width:400px;
-padding:30px;
-border-radius:25px;
-background:rgba(255,255,255,.09);
-}
-
-input{
-width:100%;
-box-sizing:border-box;
-padding:15px;
-margin:8px 0;
-border:0;
-border-radius:12px;
-}
-
-button{
-width:100%;
-padding:15px;
-border:0;
-border-radius:12px;
-margin-top:10px;
-font-weight:bold;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="box">
-
-<h2>🔐 Create New Password</h2>
-
-<form method="POST">
-
-<input
-type="password"
-name="password"
-placeholder="New Password"
-required>
-
-<input
-type="password"
-name="confirm_password"
-placeholder="Confirm Password"
-required>
-
-<button type="submit">
-Reset Password
-</button>
-
-</form>
-
-</div>
-
-</body>
-
-</html>
-"""
+""")
 
 
 # =========================
@@ -1283,17 +972,18 @@ Reset Password
 @app.route("/admin")
 def admin_dashboard():
 
-    if not admin_required():
+    if session.get(
+        "admin_logged_in"
+    ) is not True:
 
         return redirect(
-            url_for(
-                "admin_login"
-            )
+            url_for("admin_login")
         )
 
     memories = []
 
     total_photos = 0
+
     total_videos = 0
 
     if os.path.exists(
@@ -1310,12 +1000,12 @@ def admin_dashboard():
             )
 
             if not os.path.isdir(folder):
-
                 continue
 
             files = []
 
             photos = 0
+
             videos = 0
 
             for filename in os.listdir(
@@ -1323,7 +1013,6 @@ def admin_dashboard():
             ):
 
                 if filename == "message.txt":
-
                     continue
 
                 path = os.path.join(
@@ -1332,7 +1021,6 @@ def admin_dashboard():
                 )
 
                 if not os.path.isfile(path):
-
                     continue
 
                 files.append(filename)
@@ -1340,27 +1028,19 @@ def admin_dashboard():
                 lower = filename.lower()
 
                 if lower.endswith(
-                    (
-                        ".jpg",
-                        ".jpeg",
-                        ".png",
-                        ".webp"
-                    )
+                    (".jpg",".jpeg",".png",".webp")
                 ):
 
                     photos += 1
 
                 elif lower.endswith(
-                    (
-                        ".mp4",
-                        ".webm",
-                        ".mov"
-                    )
+                    (".mp4",".webm",".mov")
                 ):
 
                     videos += 1
 
             total_photos += photos
+
             total_videos += videos
 
             memories.append({
@@ -1370,109 +1050,250 @@ def admin_dashboard():
                 "videos": videos
             })
 
+    memories.reverse()
+
     html = """
+
 <!DOCTYPE html>
+
 <html>
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+>
 
-<title>Memory QR Admin Dashboard</title>
+<title>Memory QR Admin</title>
 
 <style>
 
-body{
-margin:0;
-background:
-linear-gradient(
-135deg,
-#080b18,
-#17152e,
-#241238
-);
-color:white;
-font-family:Arial,sans-serif;
-padding:20px;
+*{
+    box-sizing:border-box;
 }
 
-.container{
-max-width:1100px;
-margin:auto;
+body{
+
+    margin:0;
+
+    font-family:Arial,sans-serif;
+
+    background:
+    linear-gradient(
+        135deg,
+        #070914,
+        #11152b,
+        #081b2d
+    );
+
+    color:white;
+
+    min-height:100vh;
 }
 
 .header{
-display:flex;
-justify-content:space-between;
-align-items:center;
-gap:10px;
-flex-wrap:wrap;
+
+    padding:25px;
+
+    display:flex;
+
+    justify-content:
+    space-between;
+
+    align-items:center;
+
+    gap:15px;
+
+    flex-wrap:wrap;
+
+    border-bottom:
+    1px solid
+    rgba(255,255,255,.1);
+}
+
+.brand{
+
+    font-size:24px;
+
+    font-weight:bold;
 }
 
 .logout{
-background:#ff5555;
-color:white;
-padding:10px 15px;
-border-radius:10px;
-text-decoration:none;
+
+    text-decoration:none;
+
+    color:white;
+
+    padding:10px 16px;
+
+    border-radius:10px;
+
+    background:
+    rgba(255,255,255,.1);
+}
+
+.container{
+
+    width:94%;
+
+    max-width:1100px;
+
+    margin:auto;
+
+    padding:30px 0 50px;
 }
 
 .stats{
-display:grid;
-grid-template-columns:
-repeat(auto-fit,minmax(180px,1fr));
-gap:15px;
-margin:25px 0;
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(auto-fit,minmax(180px,1fr));
+
+    gap:16px;
+
+    margin-bottom:30px;
 }
 
 .stat{
-background:rgba(255,255,255,.09);
-padding:20px;
-border-radius:20px;
-text-align:center;
+
+    padding:22px;
+
+    border-radius:20px;
+
+    background:
+    rgba(255,255,255,.07);
+
+    border:
+    1px solid
+    rgba(255,255,255,.12);
 }
 
-.stat h2{
-margin:5px 0;
-font-size:32px;
+.stat-icon{
+
+    font-size:28px;
+
+    margin-bottom:10px;
+}
+
+.stat-number{
+
+    font-size:30px;
+
+    font-weight:bold;
+}
+
+.stat-name{
+
+    opacity:.65;
+
+    margin-top:5px;
+}
+
+h1{
+
+    margin-bottom:20px;
 }
 
 .memory{
-background:rgba(255,255,255,.08);
-padding:20px;
-border-radius:20px;
-margin-bottom:15px;
+
+    padding:20px;
+
+    margin-bottom:18px;
+
+    border-radius:20px;
+
+    background:
+    rgba(255,255,255,.07);
+
+    border:
+    1px solid
+    rgba(255,255,255,.12);
+}
+
+.memory-top{
+
+    display:flex;
+
+    justify-content:
+    space-between;
+
+    align-items:center;
+
+    gap:15px;
+
+    flex-wrap:wrap;
 }
 
 .memory-id{
-font-size:20px;
-font-weight:bold;
-word-break:break-all;
+
+    font-size:20px;
+
+    font-weight:bold;
+}
+
+.badges{
+
+    display:flex;
+
+    gap:8px;
+
+    flex-wrap:wrap;
+}
+
+.badge{
+
+    padding:7px 10px;
+
+    border-radius:20px;
+
+    background:
+    rgba(255,255,255,.1);
+
+    font-size:13px;
 }
 
 .actions{
-display:flex;
-gap:10px;
-flex-wrap:wrap;
-margin-top:15px;
+
+    display:flex;
+
+    gap:10px;
+
+    flex-wrap:wrap;
+
+    margin-top:18px;
 }
 
-.btn{
-display:inline-block;
-padding:10px 14px;
-background:white;
-color:#111;
-border-radius:10px;
-text-decoration:none;
-font-weight:bold;
+.actions a{
+
+    text-decoration:none;
+
+    color:white;
+
+    padding:10px 14px;
+
+    border-radius:10px;
+
+    background:
+    rgba(59,130,246,.35);
 }
 
-.delete{
-background:#ff5555;
-color:white;
+.actions a.delete{
+
+    background:
+    rgba(239,68,68,.35);
+}
+
+.empty{
+
+    text-align:center;
+
+    padding:40px;
+
+    opacity:.6;
 }
 
 </style>
@@ -1481,122 +1302,176 @@ color:white;
 
 <body>
 
-<div class="container">
-
 <div class="header">
 
-<h1>📊 Memory QR Admin</h1>
+    <div class="brand">
+        🔐 Memory QR Admin
+    </div>
 
-<a
-class="logout"
-href="/admin/logout">
-Logout
-</a>
-
-</div>
-
-<div class="stats">
-
-<div class="stat">
-
-<div>🗂️ Memories</div>
-
-<h2>
-{{ memories|length }}
-</h2>
+    <a
+    class="logout"
+    href="/admin/logout"
+    >
+        Logout 🚪
+    </a>
 
 </div>
 
-<div class="stat">
 
-<div>📸 Photos</div>
+<div class="container">
 
-<h2>
-{{ total_photos }}
-</h2>
+    <div class="stats">
 
-</div>
+        <div class="stat">
 
-<div class="stat">
+            <div class="stat-icon">
+                💾
+            </div>
 
-<div>🎥 Videos</div>
+            <div class="stat-number">
+                {{ memories|length }}
+            </div>
 
-<h2>
-{{ total_videos }}
-</h2>
+            <div class="stat-name">
+                Total Memories
+            </div>
 
-</div>
+        </div>
 
-<div class="stat">
 
-<div>🔳 QR Memories</div>
+        <div class="stat">
 
-<h2>
-{{ memories|length }}
-</h2>
+            <div class="stat-icon">
+                📸
+            </div>
 
-</div>
+            <div class="stat-number">
+                {{ total_photos }}
+            </div>
 
-</div>
+            <div class="stat-name">
+                Total Photos
+            </div>
 
-<h2>Customer Memories</h2>
+        </div>
 
-{% for memory in memories %}
 
-<div class="memory">
+        <div class="stat">
 
-<div class="memory-id">
-Memory ID: {{ memory.id }}
-</div>
+            <div class="stat-icon">
+                🎥
+            </div>
 
-<p>
-📸 Photos: {{ memory.photos }}
-</p>
+            <div class="stat-number">
+                {{ total_videos }}
+            </div>
 
-<p>
-🎥 Videos: {{ memory.videos }}
-</p>
+            <div class="stat-name">
+                Total Videos
+            </div>
 
-<div class="actions">
+        </div>
 
-<a
-class="btn"
-href="/memory/{{ memory.id }}"
-target="_blank">
-Open Memory
-</a>
 
-<a
-class="btn"
-href="/static/qr/{{ memory.id }}.png"
-target="_blank">
-View QR
-</a>
+        <div class="stat">
 
-<a
-class="btn delete"
-href="/admin/delete/{{ memory.id }}"
-onclick="return confirm('Delete this memory permanently?')">
-Delete
-</a>
+            <div class="stat-icon">
+                🔗
+            </div>
 
-</div>
+            <div class="stat-number">
+                {{ memories|length }}
+            </div>
 
-</div>
+            <div class="stat-name">
+                QR Memories
+            </div>
 
-{% else %}
+        </div>
 
-<div class="memory">
-No memories found.
-</div>
+    </div>
 
-{% endfor %}
+
+    <h1>
+        Customer Memories
+    </h1>
+
+
+    {% if memories %}
+
+        {% for memory in memories %}
+
+        <div class="memory">
+
+            <div class="memory-top">
+
+                <div class="memory-id">
+                    🆔 {{ memory.id }}
+                </div>
+
+                <div class="badges">
+
+                    <span class="badge">
+                        📸 {{ memory.photos }}
+                    </span>
+
+                    <span class="badge">
+                        🎥 {{ memory.videos }}
+                    </span>
+
+                    <span class="badge">
+                        📁 {{ memory.files|length }}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="actions">
+
+                <a
+                href="/memory/{{ memory.id }}"
+                target="_blank"
+                >
+                    👁️ Open Memory
+                </a>
+
+                <a
+                href="/static/qr/{{ memory.id }}.png"
+                target="_blank"
+                >
+                    🔳 View QR
+                </a>
+
+                <a
+                class="delete"
+                href="/admin/delete/{{ memory.id }}"
+                onclick="return confirm('Delete this memory permanently?')"
+                >
+                    🗑️ Delete
+                </a>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="empty">
+            No memories created yet.
+        </div>
+
+    {% endif %}
 
 </div>
 
 </body>
 
 </html>
+
 """
 
     return render_template_string(
@@ -1608,7 +1483,7 @@ No memories found.
 
 
 # =========================
-# DELETE MEMORY
+# ADMIN DELETE
 # =========================
 
 @app.route(
@@ -1616,12 +1491,12 @@ No memories found.
 )
 def admin_delete(memory_id):
 
-    if not admin_required():
+    if session.get(
+        "admin_logged_in"
+    ) is not True:
 
         return redirect(
-            url_for(
-                "admin_login"
-            )
+            url_for("admin_login")
         )
 
     folder = os.path.join(
@@ -1630,8 +1505,6 @@ def admin_delete(memory_id):
     )
 
     if os.path.exists(folder):
-
-        import shutil
 
         shutil.rmtree(folder)
 
@@ -1645,32 +1518,26 @@ def admin_delete(memory_id):
         os.remove(qr_path)
 
     return redirect(
-        url_for(
-            "admin_dashboard"
-        )
+        url_for("admin_dashboard")
     )
 
 
 # =========================
-# LOGOUT
+# ADMIN LOGOUT
 # =========================
 
-@app.route(
-    "/admin/logout"
-)
+@app.route("/admin/logout")
 def admin_logout():
 
     session.clear()
 
     return redirect(
-        url_for(
-            "admin_login"
-        )
+        url_for("admin_login")
     )
 
 
 # =========================
-# RUN
+# START SERVER
 # =========================
 
 if __name__ == "__main__":
