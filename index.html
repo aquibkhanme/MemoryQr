@@ -1,1007 +1,669 @@
+from flask import Flask, request, jsonify, send_from_directory
+import os
+import qrcode
+import uuid
+import json
+from werkzeug.utils import secure_filename
+from markupsafe import escape
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = "memories"
+QR_FOLDER = "static/qr"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(QR_FOLDER, exist_ok=True)
+
+
+def get_memory_folder(memory_id):
+    return os.path.join(
+        UPLOAD_FOLDER,
+        memory_id
+    )
+
+
+def get_message_file(memory_id):
+    return os.path.join(
+        get_memory_folder(memory_id),
+        "message.json"
+    )
+
+
+@app.route("/")
+def home():
+    return send_from_directory(
+        ".",
+        "index.html"
+    )
+
+
+@app.route("/create-memory", methods=["POST"])
+def create_memory():
+
+    memory_id = str(
+        uuid.uuid4()
+    )[:8]
+
+    memory_folder = get_memory_folder(
+        memory_id
+    )
+
+    os.makedirs(
+        memory_folder,
+        exist_ok=True
+    )
+
+    base_url = request.host_url.rstrip("/")
+
+    qr_url = (
+        f"{base_url}/memory/{memory_id}"
+    )
+
+    qr = qrcode.make(qr_url)
+
+    qr_path = os.path.join(
+        QR_FOLDER,
+        f"{memory_id}.png"
+    )
+
+    qr.save(qr_path)
+
+    return jsonify({
+        "success": True,
+        "memory_id": memory_id,
+        "qr": f"/static/qr/{memory_id}.png",
+        "memory_url": qr_url
+    })
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+
+    memory_id = request.form.get(
+        "memory_id"
+    )
+
+    if not memory_id:
+        return jsonify({
+            "success": False,
+            "error": "Memory ID missing"
+        }), 400
+
+    memory_folder = get_memory_folder(
+        memory_id
+    )
+
+    if not os.path.exists(
+        memory_folder
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Memory not found"
+        }), 404
+
+    files = request.files.getlist(
+        "file"
+    )
+
+    if not files:
+        files = request.files.getlist(
+            "files"
+        )
+
+    if not files:
+        return jsonify({
+            "success": False,
+            "error": "No file received"
+        }), 400
+
+    saved = []
+
+    for file in files:
+
+        if not file or not file.filename:
+            continue
+
+        filename = secure_filename(
+            file.filename
+        )
+
+        if not filename:
+            continue
+
+        original_name = filename
+
+        name, ext = os.path.splitext(
+            original_name
+        )
+
+        counter = 1
+
+        while os.path.exists(
+            os.path.join(
+                memory_folder,
+                filename
+            )
+        ):
+
+            filename = (
+                f"{name}_{counter}{ext}"
+            )
+
+            counter += 1
+
+        file.save(
+            os.path.join(
+                memory_folder,
+                filename
+            )
+        )
+
+        saved.append(filename)
+
+    if not saved:
+        return jsonify({
+            "success": False,
+            "error": "File could not be saved"
+        }), 400
+
+    return jsonify({
+        "success": True,
+        "files": saved
+    })
+
+
+@app.route("/save-message", methods=["POST"])
+def save_message():
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    memory_id = data.get(
+        "memory_id"
+    )
+
+    message = data.get(
+        "message",
+        ""
+    )
+
+    if not memory_id:
+        return jsonify({
+            "success": False,
+            "error": "Memory ID missing"
+        }), 400
+
+    memory_folder = get_memory_folder(
+        memory_id
+    )
+
+    if not os.path.exists(
+        memory_folder
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Memory not found"
+        }), 404
+
+    # Maximum 10,000 characters
+    message = str(message)[:10000]
+
+    with open(
+        get_message_file(memory_id),
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            {
+                "message": message
+            },
+            f,
+            ensure_ascii=False
+        )
+
+    return jsonify({
+        "success": True
+    })
+
+
+@app.route(
+    "/memories/<memory_id>/<path:filename>"
+)
+def memory_file(
+    memory_id,
+    filename
+):
+
+    folder = get_memory_folder(
+        memory_id
+    )
+
+    if not os.path.exists(folder):
+        return "Memory not found", 404
+
+    return send_from_directory(
+        folder,
+        filename
+    )
+
+
+@app.route("/memory/<memory_id>")
+def memory_page(memory_id):
+
+    folder = get_memory_folder(
+        memory_id
+    )
+
+    if not os.path.exists(folder):
+        return "Memory not found", 404
+
+    files = os.listdir(folder)
+
+    photos = []
+    videos = []
+
+    for filename in files:
+
+        lower = filename.lower()
+
+        if lower.endswith((
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif"
+        )):
+
+            photos.append(filename)
+
+        elif lower.endswith((
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".mkv",
+            ".avi",
+            ".m4v"
+        )):
+
+            videos.append(filename)
+
+
+    # Read exact saved diary message
+    message = ""
+
+    message_file = get_message_file(
+        memory_id
+    )
+
+    if os.path.exists(
+        message_file
+    ):
+
+        try:
+
+            with open(
+                message_file,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
+                data = json.load(f)
+
+                message = data.get(
+                    "message",
+                    ""
+                )
+
+        except Exception:
+
+            message = ""
+
+
+    photo_html = ""
+
+    for filename in photos:
+
+        safe_filename = escape(
+            filename
+        )
+
+        photo_html += f"""
+        <div class="photo">
+            <img
+                src="/memories/{memory_id}/{safe_filename}"
+                alt="Memory Photo">
+        </div>
+        """
+
+
+    video_html = ""
+
+    for filename in videos:
+
+        safe_filename = escape(
+            filename
+        )
+
+        video_html += f"""
+        <video
+            controls
+            playsinline
+            preload="metadata">
+
+            <source
+                src="/memories/{memory_id}/{safe_filename}">
+
+        </video>
+        """
+
+
+    if not photo_html:
+
+        photo_html = """
+        <p class="empty">
+            No photos added yet.
+        </p>
+        """
+
+
+    if not video_html:
+
+        video_html = """
+        <p class="empty">
+            No video added yet.
+        </p>
+        """
+
+
+    if not message:
+
+        message = """
+        Your special message will appear here.
+        """
+
+
+    # Safely display user's exact text
+    safe_message = escape(
+        message
+    )
+
+
+    return f"""
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Memory QR</title>
+<meta
+name="viewport"
+content="width=device-width,initial-scale=1.0">
+
+<title>Your Memory • Memory QR</title>
 
 <style>
 
-*{
+* {{
     box-sizing:border-box;
-}
+}}
 
-body{
+body {{
     margin:0;
+    padding:25px;
+
     font-family:Arial,sans-serif;
+
     color:white;
-    min-height:100vh;
 
     background:
-    radial-gradient(
-        circle at top,
-        #303d78 0%,
-        #10152f 40%,
-        #050713 100%
+    linear-gradient(
+        135deg,
+        #090b18,
+        #1b1030,
+        #071d27
     );
-}
+}}
 
-.container{
-    width:92%;
-    max-width:850px;
+.container {{
+    max-width:1000px;
     margin:auto;
-    padding:25px 0 30px;
-}
+}}
 
-.logo{
+.header {{
     text-align:center;
-    font-size:28px;
+    padding:35px 15px;
+}}
+
+.logo {{
+    color:#ff62c5;
+    font-size:22px;
     font-weight:bold;
-    letter-spacing:2px;
-}
+}}
 
-.logo span{
-    color:#ff5b9d;
-}
-
-.hero{
-    text-align:center;
-    padding:25px 5px;
-}
-
-.hero h1{
-    font-size:42px;
-    margin:10px 0;
-}
-
-.hero p{
-    color:#c8cee3;
-    line-height:1.6;
-}
-
-.card{
-    background:rgba(255,255,255,.08);
-    border:1px solid rgba(255,255,255,.15);
-    border-radius:25px;
-    padding:25px;
-
-    box-shadow:
-    0 20px 50px rgba(0,0,0,.35);
-
-    backdrop-filter:blur(12px);
-}
-
-h2{
-    text-align:center;
-    margin-top:0;
-}
-
-.options{
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:14px;
-    margin-top:20px;
-}
-
-.option{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    min-height:65px;
-
-    border-radius:17px;
+h1 {{
+    font-size:45px;
+    margin:15px 0;
 
     background:
     linear-gradient(
-        135deg,
-        #6757e8,
-        #a45de8
+        90deg,
+        #ff72c8,
+        #8b7aff
     );
 
-    color:white;
+    -webkit-background-clip:text;
+    color:transparent;
+}}
 
-    font-size:16px;
-    font-weight:bold;
-
-    cursor:pointer;
-
-    transition:.2s;
-
-    text-align:center;
-}
-
-.option:active{
-    transform:scale(.97);
-}
-
-input[type="file"]{
-    display:none;
-}
-
-#fileStatus{
-    text-align:center;
-    margin-top:18px;
-    color:#c6cce2;
-    font-size:14px;
-    line-height:1.7;
-}
-
-.diary{
-    margin-top:22px;
-}
-
-textarea{
-    width:100%;
-    min-height:180px;
-
-    border:1px solid rgba(255,255,255,.15);
-    border-radius:17px;
-
-    padding:16px;
-
-    background:rgba(0,0,0,.25);
-    color:white;
-
-    outline:none;
-    resize:vertical;
-
+.memory-id {{
+    color:#aaa;
     font-size:15px;
-    line-height:1.6;
-}
+    word-break:break-all;
+}}
 
-textarea::placeholder{
-    color:#aab2ca;
-}
+.section {{
+    margin:25px 0;
+    padding:25px;
 
-.char-count{
-    text-align:right;
-    margin-top:7px;
-    color:#9fa8c4;
-    font-size:13px;
-}
+    border-radius:28px;
 
-.generate{
+    background:#ffffff0d;
+
+    border:1px solid #ffffff1c;
+}}
+
+h2 {{
+    color:#ff82d2;
+    margin-top:0;
+}}
+
+.photos {{
+    display:grid;
+
+    grid-template-columns:
+    repeat(
+        auto-fit,
+        minmax(180px,1fr)
+    );
+
+    gap:15px;
+}}
+
+.photo {{
+    overflow:hidden;
+    border-radius:20px;
+    background:#151526;
+}}
+
+.photo img {{
+    display:block;
+    width:100%;
+    height:220px;
+    object-fit:cover;
+}}
+
+video {{
+    width:100%;
+    max-width:700px;
+
+    display:block;
+
+    margin:15px auto;
+
+    border-radius:20px;
+}}
+
+.message {{
     width:100%;
 
-    border:0;
-    border-radius:17px;
+    padding:25px;
 
-    padding:17px;
-    margin-top:15px;
+    border-radius:20px;
 
     background:
     linear-gradient(
         135deg,
-        #ff4f81,
-        #ff795d
+        #522044,
+        #34305d
     );
 
-    color:white;
+    line-height:1.8;
 
-    font-size:17px;
-    font-weight:bold;
+    font-size:18px;
 
-    cursor:pointer;
-}
+    /*
+       Important:
+       Long words and long text
+       automatically wrap.
+    */
 
-.generate:disabled{
-    opacity:.6;
-    cursor:not-allowed;
-}
+    white-space:pre-wrap;
 
-#status{
-    text-align:center;
-    margin-top:18px;
-    color:#c7d0ff;
-    line-height:1.6;
-}
+    overflow-wrap:anywhere;
 
-#qrBox{
-    display:none;
+    word-break:break-word;
 
-    text-align:center;
-
-    margin-top:28px;
-    padding:25px;
-
-    border-radius:22px;
-
-    background:rgba(0,0,0,.25);
-    border:1px solid rgba(255,255,255,.1);
-}
-
-#qrImage{
-    width:240px;
     max-width:100%;
 
-    padding:10px;
+    overflow:hidden;
+}}
 
-    background:white;
-
-    border-radius:15px;
-}
-
-#memoryId{
-    color:#bfc6dd;
-    word-break:break-all;
-}
-
-.openMemory{
-    display:inline-block;
-
-    margin-top:12px;
-
-    padding:14px 22px;
-
-    border-radius:13px;
-
-    background:#25D366;
-
-    color:white;
-
-    text-decoration:none;
-
-    font-weight:bold;
-}
-
-footer{
+.empty {{
+    color:#999;
     text-align:center;
+}}
 
-    color:#858da7;
+.footer {{
+    text-align:center;
+    color:#777;
+    padding:30px;
+}}
 
-    padding:30px 0 5px;
+@media(max-width:600px) {{
 
-    font-size:14px;
-}
+    body {{
+        padding:15px;
+    }}
 
-@media(max-width:600px){
+    h1 {{
+        font-size:35px;
+    }}
 
-    .hero h1{
-        font-size:32px;
-    }
+    .section {{
+        padding:20px;
+    }}
 
-    .options{
-        grid-template-columns:1fr;
-    }
+    .message {{
+        font-size:16px;
+        padding:20px;
+    }}
 
-}
+}}
 
 </style>
 
 </head>
 
-
 <body>
 
 <div class="container">
 
+<div class="header">
 
 <div class="logo">
-♥ MEMORY <span>QR</span>
+♥ MEMORY QR
 </div>
 
+<h1>
+Your Memories, Forever.
+</h1>
 
-<div class="hero">
-
-<h1>Your Memories, Forever.</h1>
-
-<p>
-Save multiple photos, multiple videos and your personal diary
-inside one Memory QR.
-</p>
-
+<div class="memory-id">
+Memory ID: {memory_id}
 </div>
-
-
-<div class="card">
-
-
-<h2>📦 Create Your Memory</h2>
-
-
-<div class="options">
-
-
-<!-- CAMERA -->
-
-<label class="option">
-
-📷 Take Photo
-
-<input
-id="cameraInput"
-type="file"
-accept="image/*"
-capture="environment">
-
-</label>
-
-
-<!-- MULTIPLE PHOTOS -->
-
-<label class="option">
-
-🖼️ Select Photos
-
-<input
-id="galleryInput"
-type="file"
-accept="image/*"
-multiple>
-
-</label>
-
-
-<!-- MULTIPLE VIDEOS -->
-
-<label class="option">
-
-🎥 Select Videos
-
-<input
-id="videoInput"
-type="file"
-accept="video/*"
-multiple>
-
-</label>
-
-
-<!-- DIARY -->
-
-<label
-class="option"
-onclick="openDiary()">
-
-📔 Personal Diary
-
-</label>
-
 
 </div>
 
 
-<div id="fileStatus">
-
-No photo or video added yet.
-
-</div>
-
-
-<div class="diary">
-
-
-<textarea
-id="message"
-maxlength="10000"
-placeholder="Write your personal diary or special message here..."></textarea>
-
-
-<div class="char-count">
-
-<span id="charCount">0</span> / 10,000
-
-</div>
-
-
-<button
-id="generateButton"
-class="generate"
-onclick="generateMemoryQR()">
-
-✨ Generate Memory QR
-
-</button>
-
-
-</div>
-
-
-<div id="status"></div>
-
-
-<div id="qrBox">
-
+<section class="section">
 
 <h2>
-🎉 Memory QR Ready
+📸 Beautiful Moments
 </h2>
 
+<div class="photos">
 
-<img
-id="qrImage"
-alt="Memory QR">
-
-
-<p id="memoryId"></p>
-
-
-<a
-id="openMemory"
-class="openMemory"
-target="_blank">
-
-❤️ Open My Memory
-
-</a>
-
+{photo_html}
 
 </div>
 
+</section>
 
-</div>
+
+<section class="section">
+
+<h2>
+🎥 Memory Videos
+</h2>
+
+{video_html}
+
+</section>
 
 
-<footer>
+<section class="section">
+
+<h2>
+💌 Personal Diary
+</h2>
+
+<div class="message">{safe_message}</div>
+
+</section>
+
+
+<div class="footer">
 
 This site is made by Aquib Khan ❤️
 
-</footer>
-
+</div>
 
 </div>
 
-
-<script>
-
-
-let memoryId = null;
-
-let memoryData = null;
-
-let uploadedPhotos = 0;
-
-let uploadedVideos = 0;
-
-let diarySaved = false;
-
-
-/* CREATE MEMORY */
-
-async function createMemory(){
-
-    if(memoryId){
-
-        return true;
-
-    }
-
-
-    try{
-
-        const response =
-            await fetch(
-                "/create-memory",
-                {
-                    method:"POST"
-                }
-            );
-
-
-        if(!response.ok){
-
-            throw new Error(
-                "Memory creation failed"
-            );
-
-        }
-
-
-        memoryData =
-            await response.json();
-
-
-        memoryId =
-            memoryData.memory_id;
-
-
-        return true;
-
-
-    }catch(error){
-
-        document.getElementById(
-            "status"
-        ).innerText =
-            "Memory could not be created. Please try again.";
-
-        return false;
-
-    }
-
-}
-
-
-/* MULTIPLE FILE UPLOAD */
-
-async function uploadFiles(files){
-
-    if(!files || files.length === 0){
-
-        return;
-
-    }
-
-
-    const ready =
-        await createMemory();
-
-
-    if(!ready){
-
-        return;
-
-    }
-
-
-    const status =
-        document.getElementById(
-            "status"
-        );
-
-
-    status.innerText =
-        "Uploading " +
-        files.length +
-        " file(s)...";
-
-
-    const formData =
-        new FormData();
-
-
-    formData.append(
-        "memory_id",
-        memoryId
-    );
-
-
-    for(
-        const file of files
-    ){
-
-        formData.append(
-            "file",
-            file
-        );
-
-    }
-
-
-    try{
-
-        const response =
-            await fetch(
-                "/upload",
-                {
-                    method:"POST",
-                    body:formData
-                }
-            );
-
-
-        if(!response.ok){
-
-            throw new Error(
-                "Upload failed"
-            );
-
-        }
-
-
-        const result =
-            await response.json();
-
-
-        if(
-            !result.success ||
-            !result.files ||
-            result.files.length === 0
-        ){
-
-            throw new Error(
-                "Files were not saved"
-            );
-
-        }
-
-
-        for(
-            const file of files
-        ){
-
-            if(
-                file.type.startsWith(
-                    "image/"
-                )
-            ){
-
-                uploadedPhotos++;
-
-            }
-
-
-            if(
-                file.type.startsWith(
-                    "video/"
-                )
-            ){
-
-                uploadedVideos++;
-
-            }
-
-        }
-
-
-        updateFileStatus();
-
-
-        status.innerText =
-            result.files.length +
-            " file(s) saved successfully ❤️";
-
-
-    }catch(error){
-
-        status.innerText =
-            "Could not save selected files.";
-
-    }
-
-}
-
-
-/* CAMERA */
-
-document.getElementById(
-    "cameraInput"
-).addEventListener(
-    "change",
-    async function(){
-
-        const files =
-            Array.from(
-                this.files
-            );
-
-
-        await uploadFiles(
-            files
-        );
-
-
-        this.value = "";
-
-    }
-);
-
-
-/* SELECT MULTIPLE PHOTOS */
-
-document.getElementById(
-    "galleryInput"
-).addEventListener(
-    "change",
-    async function(){
-
-        const files =
-            Array.from(
-                this.files
-            );
-
-
-        await uploadFiles(
-            files
-        );
-
-
-        this.value = "";
-
-    }
-);
-
-
-/* SELECT MULTIPLE VIDEOS */
-
-document.getElementById(
-    "videoInput"
-).addEventListener(
-    "change",
-    async function(){
-
-        const files =
-            Array.from(
-                this.files
-            );
-
-
-        await uploadFiles(
-            files
-        );
-
-
-        this.value = "";
-
-    }
-);
-
-
-/* FILE STATUS */
-
-function updateFileStatus(){
-
-    if(
-        uploadedPhotos === 0 &&
-        uploadedVideos === 0
-    ){
-
-        document.getElementById(
-            "fileStatus"
-        ).innerText =
-            "No photo or video added yet.";
-
-        return;
-
-    }
-
-
-    document.getElementById(
-        "fileStatus"
-    ).innerText =
-        "📸 " +
-        uploadedPhotos +
-        " photo(s) saved • 🎥 " +
-        uploadedVideos +
-        " video(s) saved";
-
-}
-
-
-/* DIARY */
-
-function openDiary(){
-
-    const diary =
-        document.getElementById(
-            "message"
-        );
-
-
-    diary.focus();
-
-
-    diary.scrollIntoView({
-
-        behavior:"smooth",
-
-        block:"center"
-
-    });
-
-}
-
-
-/* CHARACTER COUNTER */
-
-document.getElementById(
-    "message"
-).addEventListener(
-    "input",
-    function(){
-
-        document.getElementById(
-            "charCount"
-        ).innerText =
-            this.value.length;
-
-    }
-);
-
-
-/* SAVE DIARY */
-
-async function saveDiary(){
-
-    const message =
-        document.getElementById(
-            "message"
-        ).value.trim();
-
-
-    if(!message){
-
-        return true;
-
-    }
-
-
-    if(diarySaved){
-
-        return true;
-
-    }
-
-
-    const ready =
-        await createMemory();
-
-
-    if(!ready){
-
-        return false;
-
-    }
-
-
-    try{
-
-        const response =
-            await fetch(
-                "/save-message",
-                {
-                    method:"POST",
-
-                    headers:{
-                        "Content-Type":
-                        "application/json"
-                    },
-
-                    body:JSON.stringify({
-
-                        memory_id:
-                        memoryId,
-
-                        message:
-                        message
-
-                    })
-
-                }
-            );
-
-
-        if(!response.ok){
-
-            throw new Error(
-                "Diary save failed"
-            );
-
-        }
-
-
-        diarySaved = true;
-
-
-        return true;
-
-
-    }catch(error){
-
-        document.getElementById(
-            "status"
-        ).innerText =
-            "Diary could not be saved.";
-
-
-        return false;
-
-    }
-
-}
-
-
-/* GENERATE QR */
-
-async function generateMemoryQR(){
-
-    const button =
-        document.getElementById(
-            "generateButton"
-        );
-
-
-    const status =
-        document.getElementById(
-            "status"
-        );
-
-
-    button.disabled = true;
-
-
-    status.innerText =
-        "Saving everything...";
-
-
-    const ready =
-        await createMemory();
-
-
-    if(!ready){
-
-        button.disabled = false;
-
-        return;
-
-    }
-
-
-    const diaryOK =
-        await saveDiary();
-
-
-    if(!diaryOK){
-
-        button.disabled = false;
-
-        return;
-
-    }
-
-
-    status.innerText =
-        "Generating your Memory QR...";
-
-
-    try{
-
-        document.getElementById(
-            "qrImage"
-        ).src =
-            memoryData.qr +
-            "?t=" +
-            Date.now();
-
-
-        document.getElementById(
-            "memoryId"
-        ).innerText =
-            "Memory ID: " +
-            memoryId;
-
-
-        document.getElementById(
-            "openMemory"
-        ).href =
-            memoryData.memory_url;
-
-
-        document.getElementById(
-            "qrBox"
-        ).style.display =
-            "block";
-
-
-        status.innerText =
-            "Everything saved successfully ❤️";
-
-
-        document.getElementById(
-            "qrBox"
-        ).scrollIntoView({
-
-            behavior:"smooth"
-
-        });
-
-
-    }catch(error){
-
-        status.innerText =
-            "QR could not be displayed.";
-
-    }
-
-
-    button.disabled = false;
-
-}
-
-</script>
-
 </body>
+
 </html>
+"""
+
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=8000,
+        debug=False
+    )
