@@ -109,6 +109,8 @@ h2{
     cursor:pointer;
 
     transition:.2s;
+
+    text-align:center;
 }
 
 .option:active{
@@ -276,6 +278,7 @@ footer{
 
 <div class="container">
 
+
 <div class="logo">
 ♥ MEMORY <span>QR</span>
 </div>
@@ -295,15 +298,18 @@ inside one Memory QR.
 
 <div class="card">
 
+
 <h2>📦 Create Your Memory</h2>
 
 
 <div class="options">
 
 
+<!-- CAMERA -->
+
 <label class="option">
 
-📷 Camera
+📷 Take Photo
 
 <input
 id="cameraInput"
@@ -314,9 +320,11 @@ capture="environment">
 </label>
 
 
+<!-- MULTIPLE PHOTOS -->
+
 <label class="option">
 
-🖼️ Gallery
+🖼️ Select Photos
 
 <input
 id="galleryInput"
@@ -327,9 +335,11 @@ multiple>
 </label>
 
 
+<!-- MULTIPLE VIDEOS -->
+
 <label class="option">
 
-🎥 Videos
+🎥 Select Videos
 
 <input
 id="videoInput"
@@ -339,6 +349,8 @@ multiple>
 
 </label>
 
+
+<!-- DIARY -->
 
 <label
 class="option"
@@ -353,19 +365,25 @@ onclick="openDiary()">
 
 
 <div id="fileStatus">
+
 No photo or video added yet.
+
 </div>
 
 
 <div class="diary">
 
+
 <textarea
 id="message"
 maxlength="10000"
-placeholder="Write your personal diary or special message here... (Maximum 10,000 characters)"></textarea>
+placeholder="Write your personal diary or special message here..."></textarea>
+
 
 <div class="char-count">
+
 <span id="charCount">0</span> / 10,000
+
 </div>
 
 
@@ -378,6 +396,7 @@ onclick="generateMemoryQR()">
 
 </button>
 
+
 </div>
 
 
@@ -386,7 +405,11 @@ onclick="generateMemoryQR()">
 
 <div id="qrBox">
 
-<h2>🎉 Memory QR Ready</h2>
+
+<h2>
+🎉 Memory QR Ready
+</h2>
+
 
 <img
 id="qrImage"
@@ -405,6 +428,7 @@ target="_blank">
 
 </a>
 
+
 </div>
 
 
@@ -417,15 +441,19 @@ This site is made by Aquib Khan ❤️
 
 </footer>
 
+
 </div>
 
 
 <script>
 
+
 let memoryId = null;
+
 let memoryData = null;
 
 let uploadedPhotos = 0;
+
 let uploadedVideos = 0;
 
 let diarySaved = false;
@@ -436,8 +464,11 @@ let diarySaved = false;
 async function createMemory(){
 
     if(memoryId){
+
         return true;
+
     }
+
 
     try{
 
@@ -449,19 +480,26 @@ async function createMemory(){
                 }
             );
 
+
         if(!response.ok){
+
             throw new Error(
                 "Memory creation failed"
             );
+
         }
+
 
         memoryData =
             await response.json();
 
+
         memoryId =
             memoryData.memory_id;
 
+
         return true;
+
 
     }catch(error){
 
@@ -471,34 +509,44 @@ async function createMemory(){
             "Memory could not be created. Please try again.";
 
         return false;
+
     }
+
 }
 
 
-/* UPLOAD MULTIPLE FILES */
+/* MULTIPLE FILE UPLOAD */
 
 async function uploadFiles(files){
 
     if(!files || files.length === 0){
+
         return;
+
     }
+
 
     const ready =
         await createMemory();
 
+
     if(!ready){
+
         return;
+
     }
+
 
     const status =
         document.getElementById(
             "status"
         );
 
+
     status.innerText =
-        "Saving " +
+        "Uploading " +
         files.length +
-        " selected file(s)...";
+        " file(s)...";
 
 
     const formData =
@@ -566,7 +614,9 @@ async function uploadFiles(files){
         ){
 
             if(
-                file.type.startsWith("image/")
+                file.type.startsWith(
+                    "image/"
+                )
             ){
 
                 uploadedPhotos++;
@@ -575,7 +625,9 @@ async function uploadFiles(files){
 
 
             if(
-                file.type.startsWith("video/")
+                file.type.startsWith(
+                    "video/"
+                )
             ){
 
                 uploadedVideos++;
@@ -616,9 +668,11 @@ document.getElementById(
                 this.files
             );
 
+
         await uploadFiles(
             files
         );
+
 
         this.value = "";
 
@@ -626,7 +680,7 @@ document.getElementById(
 );
 
 
-/* GALLERY - MULTIPLE PHOTOS */
+/* SELECT MULTIPLE PHOTOS */
 
 document.getElementById(
     "galleryInput"
@@ -639,9 +693,11 @@ document.getElementById(
                 this.files
             );
 
+
         await uploadFiles(
             files
         );
+
 
         this.value = "";
 
@@ -649,7 +705,7 @@ document.getElementById(
 );
 
 
-/* VIDEOS - MULTIPLE VIDEOS */
+/* SELECT MULTIPLE VIDEOS */
 
 document.getElementById(
     "videoInput"
@@ -662,9 +718,11 @@ document.getElementById(
                 this.files
             );
 
+
         await uploadFiles(
             files
         );
+
 
         this.value = "";
 
@@ -676,29 +734,17 @@ document.getElementById(
 
 function updateFileStatus(){
 
-    let text = "";
-
-
     if(
         uploadedPhotos === 0 &&
         uploadedVideos === 0
     ){
 
-        text =
+        document.getElementById(
+            "fileStatus"
+        ).innerText =
             "No photo or video added yet.";
 
-    }else{
-
-        text =
-            "📸 " +
-            uploadedPhotos +
-            " photo(s) saved";
-
-
-        text +=
-            " • 🎥 " +
-            uploadedVideos +
-            " video(s) saved";
+        return;
 
     }
 
@@ -706,7 +752,11 @@ function updateFileStatus(){
     document.getElementById(
         "fileStatus"
     ).innerText =
-        text;
+        "📸 " +
+        uploadedPhotos +
+        " photo(s) saved • 🎥 " +
+        uploadedVideos +
+        " video(s) saved";
 
 }
 
@@ -725,8 +775,11 @@ function openDiary(){
 
 
     diary.scrollIntoView({
+
         behavior:"smooth",
+
         block:"center"
+
     });
 
 }
@@ -760,20 +813,27 @@ async function saveDiary(){
 
 
     if(!message){
+
         return true;
+
     }
 
 
     if(diarySaved){
+
         return true;
+
     }
 
 
     const ready =
         await createMemory();
 
+
     if(!ready){
+
         return false;
+
     }
 
 
@@ -799,6 +859,7 @@ async function saveDiary(){
                         message
 
                     })
+
                 }
             );
 
@@ -814,6 +875,7 @@ async function saveDiary(){
 
         diarySaved = true;
 
+
         return true;
 
 
@@ -824,7 +886,9 @@ async function saveDiary(){
         ).innerText =
             "Diary could not be saved.";
 
+
         return false;
+
     }
 
 }
@@ -838,6 +902,7 @@ async function generateMemoryQR(){
         document.getElementById(
             "generateButton"
         );
+
 
     const status =
         document.getElementById(
@@ -918,7 +983,9 @@ async function generateMemoryQR(){
         document.getElementById(
             "qrBox"
         ).scrollIntoView({
+
             behavior:"smooth"
+
         });
 
 
