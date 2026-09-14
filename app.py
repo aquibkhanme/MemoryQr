@@ -34,8 +34,6 @@ def create_memory():
     memory_folder = get_memory_folder(memory_id)
     os.makedirs(memory_folder, exist_ok=True)
 
-    # Uses the address through which the website was opened.
-    # This works on your phone/LAN instead of always forcing 127.0.0.1.
     base_url = request.host_url.rstrip("/")
     qr_url = f"{base_url}/memory/{memory_id}"
 
@@ -63,20 +61,59 @@ def upload():
         }), 400
 
     memory_folder = get_memory_folder(memory_id)
-    os.makedirs(memory_folder, exist_ok=True)
 
-    files = request.files.getlist("files")
+    if not os.path.exists(memory_folder):
+        return jsonify({
+            "success": False,
+            "error": "Memory not found"
+        }), 404
+
+    # Accept both "file" and "files"
+    files = request.files.getlist("file")
+
+    if not files:
+        files = request.files.getlist("files")
+
+    if not files:
+        return jsonify({
+            "success": False,
+            "error": "No file received"
+        }), 400
+
     saved = []
 
     for file in files:
-        if file and file.filename:
-            filename = secure_filename(file.filename)
 
-            if not filename:
-                continue
+        if not file or not file.filename:
+            continue
 
-            file.save(os.path.join(memory_folder, filename))
-            saved.append(filename)
+        filename = secure_filename(file.filename)
+
+        if not filename:
+            continue
+
+        # Prevent same-name files from replacing each other
+        original_name = filename
+        name, ext = os.path.splitext(original_name)
+        counter = 1
+
+        while os.path.exists(
+            os.path.join(memory_folder, filename)
+        ):
+            filename = f"{name}_{counter}{ext}"
+            counter += 1
+
+        file.save(
+            os.path.join(memory_folder, filename)
+        )
+
+        saved.append(filename)
+
+    if not saved:
+        return jsonify({
+            "success": False,
+            "error": "File could not be saved"
+        }), 400
 
     return jsonify({
         "success": True,
@@ -105,28 +142,40 @@ def save_message():
             "error": "Memory not found"
         }), 404
 
-    with open(get_message_file(memory_id), "w", encoding="utf-8") as f:
-        json.dump({
-            "message": message
-        }, f, ensure_ascii=False)
+    with open(
+        get_message_file(memory_id),
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            {"message": message},
+            f,
+            ensure_ascii=False
+        )
 
     return jsonify({
         "success": True
     })
 
 
-@app.route("/memories/<memory_id>/<filename>")
+@app.route("/memories/<memory_id>/<path:filename>")
 def memory_file(memory_id, filename):
+
     folder = get_memory_folder(memory_id)
 
     if not os.path.exists(folder):
         return "Memory not found", 404
 
-    return send_from_directory(folder, filename)
+    return send_from_directory(
+        folder,
+        filename
+    )
 
 
 @app.route("/memory/<memory_id>")
 def memory_page(memory_id):
+
     folder = get_memory_folder(memory_id)
 
     if not os.path.exists(folder):
@@ -138,17 +187,25 @@ def memory_page(memory_id):
     videos = []
 
     for filename in files:
+
         lower = filename.lower()
 
         if lower.endswith((
-            ".jpg", ".jpeg", ".png",
-            ".webp", ".gif"
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif"
         )):
             photos.append(filename)
 
         elif lower.endswith((
-            ".mp4", ".webm",
-            ".mov", ".mkv"
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".mkv",
+            ".avi",
+            ".m4v"
         )):
             videos.append(filename)
 
@@ -157,46 +214,77 @@ def memory_page(memory_id):
     message_file = get_message_file(memory_id)
 
     if os.path.exists(message_file):
+
         try:
-            with open(message_file, "r", encoding="utf-8") as f:
+
+            with open(
+                message_file,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
                 data = json.load(f)
-                message = data.get("message", "")
-        except:
+                message = data.get(
+                    "message",
+                    ""
+                )
+
+        except Exception:
             message = ""
 
     photo_html = ""
 
     for filename in photos:
+
         photo_html += f"""
         <div class="photo">
-            <img src="/memories/{memory_id}/{filename}">
+            <img
+                src="/memories/{memory_id}/{filename}"
+                alt="Memory Photo">
         </div>
         """
 
     video_html = ""
 
     for filename in videos:
+
         video_html += f"""
-        <video controls>
-            <source src="/memories/{memory_id}/{filename}">
+        <video
+            controls
+            playsinline
+            preload="metadata">
+
+            <source
+                src="/memories/{memory_id}/{filename}">
+
         </video>
         """
 
     if not photo_html:
+
         photo_html = """
-        <p class="empty">No photos added yet.</p>
+        <p class="empty">
+            No photos added yet.
+        </p>
         """
 
     if not video_html:
+
         video_html = """
-        <p class="empty">No video added yet.</p>
+        <p class="empty">
+            No video added yet.
+        </p>
         """
 
     if not message:
-        message = "Your special message will appear here."
+
+        message = """
+        Your special message will appear here.
+        """
 
     return f"""
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
@@ -219,6 +307,7 @@ body {{
     padding:25px;
     font-family:Arial,sans-serif;
     color:white;
+
     background:
     linear-gradient(
         135deg,
@@ -247,8 +336,14 @@ body {{
 h1 {{
     font-size:45px;
     margin:15px 0;
+
     background:
-    linear-gradient(90deg,#ff72c8,#8b7aff);
+    linear-gradient(
+        90deg,
+        #ff72c8,
+        #8b7aff
+    );
+
     -webkit-background-clip:text;
     color:transparent;
 }}
@@ -261,7 +356,9 @@ h1 {{
 .section {{
     margin:25px 0;
     padding:25px;
+
     border-radius:28px;
+
     background:#ffffff0d;
     border:1px solid #ffffff1c;
 }}
@@ -273,8 +370,13 @@ h2 {{
 
 .photos {{
     display:grid;
+
     grid-template-columns:
-    repeat(auto-fit,minmax(180px,1fr));
+    repeat(
+        auto-fit,
+        minmax(180px,1fr)
+    );
+
     gap:15px;
 }}
 
@@ -294,22 +396,27 @@ h2 {{
 video {{
     width:100%;
     max-width:700px;
+
     display:block;
     margin:15px auto;
+
     border-radius:20px;
 }}
 
 .message {{
     padding:25px;
     border-radius:20px;
+
     background:
     linear-gradient(
         135deg,
         #522044,
         #34305d
     );
+
     line-height:1.8;
     font-size:18px;
+
     white-space:pre-wrap;
 }}
 
@@ -354,7 +461,9 @@ video {{
 ♥ MEMORY QR
 </div>
 
-<h1>Your Memories, Forever.</h1>
+<h1>
+Your Memories, Forever.
+</h1>
 
 <div class="memory-id">
 Memory ID: {memory_id}
@@ -365,7 +474,9 @@ Memory ID: {memory_id}
 
 <section class="section">
 
-<h2>📸 Beautiful Moments</h2>
+<h2>
+📸 Beautiful Moments
+</h2>
 
 <div class="photos">
 {photo_html}
@@ -376,7 +487,9 @@ Memory ID: {memory_id}
 
 <section class="section">
 
-<h2>🎥 Memory Video</h2>
+<h2>
+🎥 Memory Video
+</h2>
 
 {video_html}
 
@@ -385,7 +498,9 @@ Memory ID: {memory_id}
 
 <section class="section">
 
-<h2>💌 Special Message</h2>
+<h2>
+💌 Special Message
+</h2>
 
 <div class="message">
 {message}
@@ -395,7 +510,7 @@ Memory ID: {memory_id}
 
 
 <div class="footer">
-Memory QR • Made for memories that matter
+This site is made by Aquib Khan ❤️
 </div>
 
 </div>
@@ -407,6 +522,7 @@ Memory QR • Made for memories that matter
 
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=8000,
