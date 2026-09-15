@@ -1,50 +1,48 @@
+import os
+import io
+import shutil
+import secrets
+from datetime import datetime
+
 from flask import (
     Flask,
     request,
-    jsonify,
-    send_from_directory,
-    session,
     redirect,
     url_for,
-    render_template_string
+    session,
+    send_from_directory,
+    render_template_string,
+    jsonify
 )
 
-import os
-import json
-import uuid
-import shutil
 import qrcode
 
-from werkzeug.utils import secure_filename
-from markupsafe import escape
 
-try:
-    from analytics import init_db, track_request, get_stats
-except Exception:
-    def init_db():
-        pass
+# =========================================================
+# CONFIG
+# =========================================================
 
-    def track_request(req):
-        pass
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    def get_stats():
-        return {
-            "total_visits": 0,
-            "today_visits": 0,
-            "seven_day_visits": 0,
-            "memory_views": 0,
-            "most_viewed": None,
-            "devices": [],
-            "browsers": []
-        }
+MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
+TRASH_DIR = os.path.join(BASE_DIR, "trash")
+QR_DIR = os.path.join(BASE_DIR, "static", "qr")
 
+os.makedirs(MEMORIES_DIR, exist_ok=True)
+os.makedirs(TRASH_DIR, exist_ok=True)
+os.makedirs(QR_DIR, exist_ok=True)
 
 app = Flask(__name__)
 
 app.secret_key = os.environ.get(
     "SECRET_KEY",
-    "memoryqr-change-this-secret"
+    "memoryqr-local-secret-change-this"
 )
+
+
+# =========================================================
+# ADMIN LOGIN
+# =========================================================
 
 ADMIN_USERNAME = os.environ.get(
     "ADMIN_USERNAME",
@@ -56,86 +54,785 @@ ADMIN_PASSWORD = os.environ.get(
     "MemoryQR@123"
 )
 
-UPLOAD_FOLDER = "memories"
-QR_FOLDER = "static/qr"
 
-os.makedirs(
-    UPLOAD_FOLDER,
-    exist_ok=True
-)
+# =========================================================
+# ANALYTICS
+# =========================================================
 
-os.makedirs(
-    QR_FOLDER,
-    exist_ok=True
-)
+try:
 
-init_db()
+    from analytics import (
+        init_db,
+        track_request,
+        get_stats
+    )
 
-
-@app.before_request
-def analytics_middleware():
     try:
-        track_request(request)
+        init_db()
     except Exception:
         pass
 
+    @app.before_request
+    def analytics_middleware():
 
-def get_memory_folder(memory_id):
-    return os.path.join(
-        UPLOAD_FOLDER,
-        memory_id
-    )
+        try:
+            track_request(request)
+        except Exception:
+            pass
+
+except Exception:
+
+    def get_stats():
+
+        return {
+            "total_visits": 0,
+            "today_visits": 0,
+            "seven_day_visits": 0,
+            "memory_views": 0,
+            "most_viewed": None,
+            "devices": [],
+            "browsers": []
+        }
 
 
-def get_message_file(memory_id):
-    return os.path.join(
-        get_memory_folder(memory_id),
-        "message.json"
-    )
+# =========================================================
+# EXTENSIONS
+# =========================================================
+
+IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".bmp"
+}
+
+VIDEO_EXTENSIONS = {
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".m4v",
+    ".avi",
+    ".mkv"
+}
 
 
-def admin_required():
+# =========================================================
+# LOGIN HELPERS
+# =========================================================
+
+def is_logged_in():
+
     return session.get(
         "admin_logged_in"
     ) is True
 
 
-def allowed_file(filename):
+def require_admin():
 
-    allowed = {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp",
-        ".gif",
-        ".mp4",
-        ".webm",
-        ".mov",
-        ".m4v",
-        ".mkv"
+    if not is_logged_in():
+
+        return redirect(
+            url_for("admin_login")
+        )
+
+    return None
+
+
+# =========================================================
+# PATH HELPERS
+# =========================================================
+
+def get_memory_folder(memory_id):
+
+    return os.path.join(
+        MEMORIES_DIR,
+        memory_id
+    )
+
+
+def get_trash_folder(memory_id):
+
+    return os.path.join(
+        TRASH_DIR,
+        memory_id
+    )
+
+
+def get_qr_path(memory_id):
+
+    return os.path.join(
+        QR_DIR,
+        memory_id + ".png"
+    )
+
+
+def safe_memory_id(memory_id):
+
+    if not memory_id:
+        return False
+
+    allowed = (
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789-_"
+    )
+
+    return all(
+        c in allowed
+        for c in memory_id
+    )
+
+
+def create_memory_id():
+
+    while True:
+
+        memory_id = secrets.token_urlsafe(10)
+
+        if not safe_memory_id(
+            memory_id
+        ):
+            continue
+
+        if not os.path.exists(
+            get_memory_folder(memory_id)
+        ):
+
+            return memory_id
+
+
+# =========================================================
+# FILE NAME SAFETY
+# =========================================================
+
+def safe_filename(filename):
+
+    filename = os.path.basename(
+        filename or ""
+    )
+
+    if not filename:
+        return ""
+
+    filename = filename.replace(
+        "\x00",
+        ""
+    )
+
+    return filename
+
+
+# =========================================================
+# IMPORTANT FILE UPLOAD HANDLER
+# =========================================================
+
+def get_request_files():
+
+    """
+    Supports every file field used by the current
+    Memory QR website.
+
+    Most important:
+        file
+
+    Also supports:
+        files
+        photos
+        videos
+        photoFiles
+        videoFiles
+    """
+
+    files = []
+
+    field_names = [
+        "file",
+        "files",
+        "photos",
+        "videos",
+        "photoFiles",
+        "videoFiles"
+    ]
+
+    for field_name in field_names:
+
+        try:
+
+            incoming = request.files.getlist(
+                field_name
+            )
+
+            if incoming:
+
+                files.extend(
+                    incoming
+                )
+
+        except Exception:
+
+            pass
+
+    valid_files = []
+
+    for uploaded in files:
+
+        if uploaded is None:
+            continue
+
+        filename = safe_filename(
+            uploaded.filename
+        )
+
+        if not filename:
+            continue
+
+        valid_files.append(
+            uploaded
+        )
+
+    return valid_files
+
+
+# =========================================================
+# SAVE UPLOADED FILES
+# =========================================================
+
+def save_request_files(folder):
+
+    os.makedirs(
+        folder,
+        exist_ok=True
+    )
+
+    uploaded_files = get_request_files()
+
+    saved_files = []
+
+    for uploaded in uploaded_files:
+
+        filename = safe_filename(
+            uploaded.filename
+        )
+
+        if not filename:
+            continue
+
+        destination = os.path.join(
+            folder,
+            filename
+        )
+
+        try:
+
+            uploaded.save(
+                destination
+            )
+
+            if os.path.isfile(
+                destination
+            ):
+
+                saved_files.append(
+                    filename
+                )
+
+        except Exception as e:
+
+            print(
+                "FILE SAVE ERROR:",
+                filename,
+                e
+            )
+
+    return saved_files
+
+
+# =========================================================
+# FILE HELPERS
+# =========================================================
+
+def get_files(folder):
+
+    if not os.path.isdir(folder):
+        return []
+
+    result = []
+
+    for filename in os.listdir(
+        folder
+    ):
+
+        path = os.path.join(
+            folder,
+            filename
+        )
+
+        if os.path.isfile(path):
+
+            result.append(
+                filename
+            )
+
+    return sorted(result)
+
+
+def count_media(folder):
+
+    photos = 0
+    videos = 0
+
+    for filename in get_files(
+        folder
+    ):
+
+        ext = os.path.splitext(
+            filename
+        )[1].lower()
+
+        if ext in IMAGE_EXTENSIONS:
+
+            photos += 1
+
+        elif ext in VIDEO_EXTENSIONS:
+
+            videos += 1
+
+    return photos, videos
+
+
+def message_exists(folder):
+
+    return os.path.isfile(
+        os.path.join(
+            folder,
+            "message.txt"
+        )
+    )
+
+
+def read_message(folder):
+
+    message_file = os.path.join(
+        folder,
+        "message.txt"
+    )
+
+    if not os.path.isfile(
+        message_file
+    ):
+
+        return ""
+
+    try:
+
+        with open(
+            message_file,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            return f.read()
+
+    except Exception:
+
+        return ""
+
+
+def folder_created_time(folder):
+
+    try:
+
+        return datetime.fromtimestamp(
+            os.path.getctime(folder)
+        ).strftime(
+            "%d %b %Y, %I:%M %p"
+        )
+
+    except Exception:
+
+        return "Unknown"
+
+
+# =========================================================
+# MEMORY INFORMATION
+# =========================================================
+
+def get_memory_info(
+    memory_id,
+    trash=False
+):
+
+    folder = (
+        get_trash_folder(memory_id)
+        if trash
+        else get_memory_folder(memory_id)
+    )
+
+    if not os.path.isdir(folder):
+
+        return None
+
+    photos, videos = count_media(
+        folder
+    )
+
+    return {
+        "id": memory_id,
+        "folder": folder,
+        "photos": photos,
+        "videos": videos,
+        "message": message_exists(folder),
+        "created": folder_created_time(folder),
+        "message_text": read_message(folder),
+        "qr": os.path.exists(
+            get_qr_path(memory_id)
+        )
     }
 
-    return os.path.splitext(
-        filename.lower()
-    )[1] in allowed
+
+def get_all_memories():
+
+    memories = []
+
+    if not os.path.isdir(
+        MEMORIES_DIR
+    ):
+
+        return memories
+
+    for memory_id in os.listdir(
+        MEMORIES_DIR
+    ):
+
+        folder = os.path.join(
+            MEMORIES_DIR,
+            memory_id
+        )
+
+        if not os.path.isdir(
+            folder
+        ):
+
+            continue
+
+        if not safe_memory_id(
+            memory_id
+        ):
+
+            continue
+
+        info = get_memory_info(
+            memory_id
+        )
+
+        if info:
+
+            memories.append(
+                info
+            )
+
+    memories.sort(
+        key=lambda x: os.path.getctime(
+            x["folder"]
+        ),
+        reverse=True
+    )
+
+    return memories
 
 
-# -------------------------------------------------
-# HOME
-# -------------------------------------------------
+def get_all_trash():
+
+    trash = []
+
+    if not os.path.isdir(
+        TRASH_DIR
+    ):
+
+        return trash
+
+    for memory_id in os.listdir(
+        TRASH_DIR
+    ):
+
+        folder = os.path.join(
+            TRASH_DIR,
+            memory_id
+        )
+
+        if not os.path.isdir(
+            folder
+        ):
+
+            continue
+
+        if not safe_memory_id(
+            memory_id
+        ):
+
+            continue
+
+        info = get_memory_info(
+            memory_id,
+            trash=True
+        )
+
+        if info:
+
+            trash.append(
+                info
+            )
+
+    trash.sort(
+        key=lambda x: os.path.getctime(
+            x["folder"]
+        ),
+        reverse=True
+    )
+
+    return trash
+
+
+# =========================================================
+# QR
+# =========================================================
+
+def generate_qr(memory_id):
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    os.makedirs(
+        QR_DIR,
+        exist_ok=True
+    )
+
+    memory_url = url_for(
+        "view_memory",
+        memory_id=memory_id,
+        _external=True
+    )
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4
+    )
+
+    qr.add_data(
+        memory_url
+    )
+
+    qr.make(
+        fit=True
+    )
+
+    img = qr.make_image()
+
+    img.save(
+        qr_path
+    )
+
+    return qr_path
+
+
+def ensure_qr(memory_id):
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if not os.path.isfile(
+        qr_path
+    ):
+
+        try:
+
+            generate_qr(
+                memory_id
+            )
+
+        except Exception:
+
+            return False
+
+    return True
+
+
+# =========================================================
+# TRASH / DELETE
+# =========================================================
+
+def move_to_trash(memory_id):
+
+    source = get_memory_folder(
+        memory_id
+    )
+
+    destination = get_trash_folder(
+        memory_id
+    )
+
+    if not os.path.isdir(
+        source
+    ):
+
+        return False
+
+    if os.path.exists(
+        destination
+    ):
+
+        shutil.rmtree(
+            destination
+        )
+
+    shutil.move(
+        source,
+        destination
+    )
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if os.path.exists(
+        qr_path
+    ):
+
+        os.remove(
+            qr_path
+        )
+
+    return True
+
+
+def restore_from_trash(memory_id):
+
+    source = get_trash_folder(
+        memory_id
+    )
+
+    destination = get_memory_folder(
+        memory_id
+    )
+
+    if not os.path.isdir(
+        source
+    ):
+
+        return False
+
+    if os.path.exists(
+        destination
+    ):
+
+        return False
+
+    shutil.move(
+        source,
+        destination
+    )
+
+    ensure_qr(
+        memory_id
+    )
+
+    return True
+
+
+def permanent_delete(memory_id):
+
+    folder = get_trash_folder(
+        memory_id
+    )
+
+    if os.path.isdir(
+        folder
+    ):
+
+        shutil.rmtree(
+            folder
+        )
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if os.path.exists(
+        qr_path
+    ):
+
+        os.remove(
+            qr_path
+        )
+
+    return True
+
+
+def direct_delete_memory(memory_id):
+
+    folder = get_memory_folder(
+        memory_id
+    )
+
+    if os.path.isdir(
+        folder
+    ):
+
+        shutil.rmtree(
+            folder
+        )
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if os.path.exists(
+        qr_path
+    ):
+
+        os.remove(
+            qr_path
+        )
+
+    return True
+
+
+# =========================================================
+# CUSTOMER HOME
+# =========================================================
 
 @app.route("/")
 def home():
 
-    return send_from_directory(
-        ".",
+    index_file = os.path.join(
+        BASE_DIR,
         "index.html"
     )
 
+    if os.path.isfile(
+        index_file
+    ):
 
-# -------------------------------------------------
+        return send_from_directory(
+            BASE_DIR,
+            "index.html"
+        )
+
+    return """
+    <h1>Memory QR</h1>
+    <p>Website is ready.</p>
+    """
+
+
+# =========================================================
 # CREATE MEMORY
-# -------------------------------------------------
+# =========================================================
 
 @app.route(
     "/create-memory",
@@ -143,174 +840,270 @@ def home():
 )
 def create_memory():
 
-    memory_id = uuid.uuid4().hex[:12]
+    try:
 
-    folder = get_memory_folder(
-        memory_id
-    )
+        memory_id = create_memory_id()
 
-    os.makedirs(
-        folder,
-        exist_ok=True
-    )
-
-    memory_url = (
-        request.host_url.rstrip("/")
-        + "/memory/"
-        + memory_id
-    )
-
-    qr_path = os.path.join(
-        QR_FOLDER,
-        memory_id + ".png"
-    )
-
-    qrcode.make(
-        memory_url
-    ).save(
-        qr_path
-    )
-
-    return jsonify({
-        "success": True,
-        "memory_id": memory_id,
-        "memory_url": memory_url,
-        "qr": url_for(
-            "static",
-            filename="qr/" + memory_id + ".png"
-        ),
-        "qr_url": url_for(
-            "static",
-            filename="qr/" + memory_id + ".png"
+        folder = get_memory_folder(
+            memory_id
         )
-    })
+
+        os.makedirs(
+            folder,
+            exist_ok=True
+        )
+
+        # -------------------------------------------------
+        # SAVE PHOTO + VIDEO FILES
+        # -------------------------------------------------
+
+        saved_files = save_request_files(
+            folder
+        )
+
+        # -------------------------------------------------
+        # SAVE MESSAGE
+        # -------------------------------------------------
+
+        message = request.form.get(
+            "message",
+            ""
+        )
+
+        if not message:
+
+            try:
+
+                data = request.get_json(
+                    silent=True
+                ) or {}
+
+                message = data.get(
+                    "message",
+                    ""
+                )
+
+            except Exception:
+
+                message = ""
+
+        with open(
+            os.path.join(
+                folder,
+                "message.txt"
+            ),
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write(
+                str(message or "")
+            )
+
+        # -------------------------------------------------
+        # GENERATE QR
+        # -------------------------------------------------
+
+        ensure_qr(
+            memory_id
+        )
+
+        memory_url = url_for(
+            "view_memory",
+            memory_id=memory_id,
+            _external=True
+        )
+
+        photo_count = 0
+        video_count = 0
+
+        for filename in saved_files:
+
+            ext = os.path.splitext(
+                filename
+            )[1].lower()
+
+            if ext in IMAGE_EXTENSIONS:
+
+                photo_count += 1
+
+            elif ext in VIDEO_EXTENSIONS:
+
+                video_count += 1
+
+        return jsonify({
+
+            "success": True,
+
+            "memory_id": memory_id,
+
+            "memory_url": memory_url,
+
+            "qr_url": url_for(
+                "admin_download_qr",
+                memory_id=memory_id,
+                _external=True
+            ),
+
+            "saved_files": saved_files,
+
+            "photo_count": photo_count,
+
+            "video_count": video_count
+
+        })
+
+    except Exception as e:
+
+        print(
+            "CREATE MEMORY ERROR:",
+            e
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
 
 
-# -------------------------------------------------
-# UPLOAD MULTIPLE FILES
-# -------------------------------------------------
+# =========================================================
+# UPLOAD
+# =========================================================
 
 @app.route(
     "/upload",
     methods=["POST"]
 )
-def upload_files():
+def upload():
 
-    memory_id = request.form.get(
-        "memory_id",
-        ""
-    ).strip()
+    try:
 
-    if not memory_id:
-
-        return jsonify({
-            "success": False,
-            "error": "Memory ID is required"
-        }), 400
-
-    folder = get_memory_folder(
-        memory_id
-    )
-
-    if not os.path.isdir(folder):
-
-        return jsonify({
-            "success": False,
-            "error": "Memory not found"
-        }), 404
-
-    # Support both:
-    # files
-    # and file
-
-    files = request.files.getlist(
-        "files"
-    )
-
-    if not files:
-
-        files = request.files.getlist(
-            "file"
+        memory_id = (
+            request.form.get(
+                "memory_id"
+            )
+            or request.args.get(
+                "memory_id"
+            )
+            or request.headers.get(
+                "X-Memory-ID"
+            )
         )
 
-    uploaded = []
-    rejected = []
+        if not memory_id:
 
-    for file in files:
+            try:
 
-        if not file:
-            continue
+                data = request.get_json(
+                    silent=True
+                ) or {}
 
-        if not file.filename:
-            continue
+                memory_id = data.get(
+                    "memory_id"
+                )
 
-        original_name = file.filename
+            except Exception:
 
-        if not allowed_file(
-            original_name
+                pass
+
+        if not memory_id:
+
+            return jsonify({
+
+                "success": False,
+
+                "error": "Memory ID missing"
+
+            }), 400
+
+        if not safe_memory_id(
+            memory_id
         ):
 
-            rejected.append(
-                original_name
-            )
+            return jsonify({
 
-            continue
+                "success": False,
 
-        filename = secure_filename(
-            original_name
+                "error": "Invalid memory ID"
+
+            }), 400
+
+        folder = get_memory_folder(
+            memory_id
         )
 
-        if not filename:
-            continue
-
-        base, ext = os.path.splitext(
-            filename
-        )
-
-        final_name = filename
-        counter = 1
-
-        while os.path.exists(
-            os.path.join(
-                folder,
-                final_name
-            )
-        ):
-
-            final_name = (
-                base
-                + "_"
-                + str(counter)
-                + ext
-            )
-
-            counter += 1
-
-        save_path = os.path.join(
+        os.makedirs(
             folder,
-            final_name
+            exist_ok=True
         )
 
-        file.save(
-            save_path
+        # -------------------------------------------------
+        # SAVE PHOTO + VIDEO
+        # -------------------------------------------------
+
+        saved_files = save_request_files(
+            folder
         )
 
-        uploaded.append(
-            final_name
+        ensure_qr(
+            memory_id
         )
 
-    return jsonify({
-        "success": True,
-        "uploaded": uploaded,
-        "files": uploaded,
-        "rejected": rejected,
-        "count": len(uploaded)
-    })
+        photo_count = 0
+        video_count = 0
+
+        for filename in saved_files:
+
+            ext = os.path.splitext(
+                filename
+            )[1].lower()
+
+            if ext in IMAGE_EXTENSIONS:
+
+                photo_count += 1
+
+            elif ext in VIDEO_EXTENSIONS:
+
+                video_count += 1
+
+        return jsonify({
+
+            "success": True,
+
+            "memory_id": memory_id,
+
+            "saved": len(saved_files),
+
+            "saved_files": saved_files,
+
+            "photo_count": photo_count,
+
+            "video_count": video_count
+
+        })
+
+    except Exception as e:
+
+        print(
+            "UPLOAD ERROR:",
+            e
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
 
 
-# -------------------------------------------------
+# =========================================================
 # SAVE MESSAGE
-# -------------------------------------------------
+# =========================================================
 
 @app.route(
     "/save-message",
@@ -318,98 +1111,104 @@ def upload_files():
 )
 def save_message():
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    try:
 
-    memory_id = str(
-        data.get(
-            "memory_id",
-            ""
-        )
-    ).strip()
+        data = request.get_json(
+            silent=True
+        ) or {}
 
-    message = str(
-        data.get(
-            "message",
-            ""
-        )
-    )
-
-    if not memory_id:
-
-        return jsonify({
-            "success": False,
-            "error": "Memory ID is required"
-        }), 400
-
-    folder = get_memory_folder(
-        memory_id
-    )
-
-    if not os.path.isdir(folder):
-
-        return jsonify({
-            "success": False,
-            "error": "Memory not found"
-        }), 404
-
-    if len(message) > 70000:
-
-        return jsonify({
-            "success": False,
-            "error": "Message is too long"
-        }), 400
-
-    with open(
-        get_message_file(memory_id),
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            {
-                "message": message
-            },
-            f,
-            ensure_ascii=False,
-            indent=2
+        memory_id = (
+            data.get("memory_id")
+            or request.form.get(
+                "memory_id"
+            )
+            or request.args.get(
+                "memory_id"
+            )
         )
 
-    return jsonify({
-        "success": True
-    })
+        message = (
+            data.get("message")
+            if "message" in data
+            else request.form.get(
+                "message",
+                ""
+            )
+        )
+
+        if not memory_id:
+
+            return jsonify({
+
+                "success": False,
+
+                "error": "Memory ID missing"
+
+            }), 400
+
+        if not safe_memory_id(
+            memory_id
+        ):
+
+            return jsonify({
+
+                "success": False,
+
+                "error": "Invalid memory ID"
+
+            }), 400
+
+        folder = get_memory_folder(
+            memory_id
+        )
+
+        if not os.path.isdir(
+            folder
+        ):
+
+            return jsonify({
+
+                "success": False,
+
+                "error": "Memory not found"
+
+            }), 404
+
+        with open(
+            os.path.join(
+                folder,
+                "message.txt"
+            ),
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write(
+                str(message or "")
+            )
+
+        return jsonify({
+
+            "success": True,
+
+            "memory_id": memory_id
+
+        })
+
+    except Exception as e:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
 
 
-# -------------------------------------------------
-# DOWNLOAD QR
-# -------------------------------------------------
-
-@app.route(
-    "/download-qr/<memory_id>"
-)
-def download_qr(memory_id):
-
-    qr_file = os.path.join(
-        QR_FOLDER,
-        memory_id + ".png"
-    )
-
-    if not os.path.isfile(qr_file):
-
-        return "QR not found", 404
-
-    return send_from_directory(
-        QR_FOLDER,
-        memory_id + ".png",
-        as_attachment=True,
-        download_name="MemoryQR-" + memory_id + ".png"
-    )
-
-
-# -------------------------------------------------
-# MEMORY FILE
-# -------------------------------------------------
+# =========================================================
+# MEMORY FILES
+# =========================================================
 
 @app.route(
     "/memories/<memory_id>/<path:filename>"
@@ -419,11 +1218,19 @@ def memory_file(
     filename
 ):
 
+    if not safe_memory_id(
+        memory_id
+    ):
+
+        return "Invalid memory", 400
+
     folder = get_memory_folder(
         memory_id
     )
 
-    if not os.path.isdir(folder):
+    if not os.path.isdir(
+        folder
+    ):
 
         return "Memory not found", 404
 
@@ -433,185 +1240,91 @@ def memory_file(
     )
 
 
-# -------------------------------------------------
-# PUBLIC MEMORY PAGE
-# -------------------------------------------------
+# =========================================================
+# PUBLIC MEMORY
+# =========================================================
 
 @app.route(
     "/memory/<memory_id>"
 )
-def memory_page(memory_id):
+def view_memory(memory_id):
+
+    if not safe_memory_id(
+        memory_id
+    ):
+
+        return "Invalid memory", 400
 
     folder = get_memory_folder(
         memory_id
     )
 
-    if not os.path.isdir(folder):
-
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta name="viewport"
-        content="width=device-width,initial-scale=1">
-        <title>Memory Not Found</title>
-        </head>
-
-        <body style="
-        margin:0;
-        background:#080912;
-        color:white;
-        font-family:Arial;
-        text-align:center;
-        padding-top:100px;
-        ">
-
-        <h2>Memory not found</h2>
-
-        <p style="color:#999">
-        This Memory QR may no longer exist.
-        </p>
-
-        </body>
-        </html>
-        """, 404
-
-    photos = []
-    videos = []
-
-    for filename in sorted(
-        os.listdir(folder)
+    if not os.path.isdir(
+        folder
     ):
 
-        if filename == "message.json":
+        return """
+        <div style="
+        font-family:Arial;
+        text-align:center;
+        margin-top:80px;
+        ">
+        <h2>Memory not found</h2>
+        <p>This memory may have been deleted.</p>
+        </div>
+        """, 404
+
+    message = read_message(
+        folder
+    )
+
+    media = []
+
+    for filename in get_files(
+        folder
+    ):
+
+        if filename == "message.txt":
+
             continue
 
         ext = os.path.splitext(
             filename
         )[1].lower()
 
-        if ext in {
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".webp",
-            ".gif"
-        }:
+        if ext in IMAGE_EXTENSIONS:
 
-            photos.append(
-                filename
-            )
+            media.append({
 
-        elif ext in {
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".m4v",
-            ".mkv"
-        }:
+                "type": "image",
 
-            videos.append(
-                filename
-            )
+                "url": url_for(
+                    "memory_file",
+                    memory_id=memory_id,
+                    filename=filename
+                )
 
-    message = ""
+            })
 
-    message_file = get_message_file(
-        memory_id
-    )
+        elif ext in VIDEO_EXTENSIONS:
 
-    if os.path.exists(
-        message_file
-    ):
+            media.append({
 
-        try:
+                "type": "video",
 
-            with open(
-                message_file,
-                "r",
-                encoding="utf-8"
-            ) as f:
+                "url": url_for(
+                    "memory_file",
+                    memory_id=memory_id,
+                    filename=filename
+                )
 
-                data = json.load(f)
-
-            message = data.get(
-                "message",
-                ""
-            )
-
-        except Exception:
-
-            message = ""
-
-    photo_html = ""
-
-    for filename in photos:
-
-        file_url = (
-            "/memories/"
-            + memory_id
-            + "/"
-            + filename
-        )
-
-        photo_html += f"""
-        <div class="photo">
-            <img
-                src="{escape(file_url)}"
-                loading="lazy"
-                onclick="openPhoto(this.src)"
-                alt="Memory Photo">
-        </div>
-        """
-
-    if not photo_html:
-
-        photo_html = """
-        <div class="empty">
-            📸 No photos added yet.
-        </div>
-        """
-
-    video_html = ""
-
-    for filename in videos:
-
-        file_url = (
-            "/memories/"
-            + memory_id
-            + "/"
-            + filename
-        )
-
-        video_html += f"""
-        <video
-            controls
-            playsinline
-            preload="metadata">
-
-            <source
-                src="{escape(file_url)}">
-
-        </video>
-        """
-
-    if not video_html:
-
-        video_html = """
-        <div class="empty">
-            🎥 No videos added yet.
-        </div>
-        """
-
-    safe_message = escape(
-        message
-    )
+            })
 
     return render_template_string(
         """
 <!DOCTYPE html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -619,197 +1332,91 @@ def memory_page(memory_id):
 
 <meta
 name="viewport"
-content="width=device-width,initial-scale=1">
+content="width=device-width,initial-scale=1.0"
+>
 
 <meta
 name="robots"
-content="noindex,nofollow,noarchive">
+content="noindex,nofollow,noarchive"
+>
 
 <title>Memory QR</title>
 
 <style>
 
 *{
-    box-sizing:border-box;
+box-sizing:border-box;
 }
 
 body{
-    margin:0;
-    background:
-        radial-gradient(
-            circle at top,
-            #35145f 0%,
-            transparent 40%
-        ),
-        linear-gradient(
-            135deg,
-            #070914,
-            #120b25,
-            #061b25
-        );
-    color:white;
-    font-family:Arial,sans-serif;
+margin:0;
+font-family:Arial,sans-serif;
+background:
+linear-gradient(
+135deg,
+#080b18,
+#10162d,
+#081b22
+);
+color:white;
+min-height:100vh;
 }
 
-main{
-    width:100%;
-    max-width:1050px;
-    margin:auto;
-    padding:20px;
+.container{
+width:min(1000px,94%);
+margin:auto;
+padding:30px 0 60px;
 }
 
-header{
-    text-align:center;
-    padding:40px 10px;
+.header{
+text-align:center;
+padding:30px 15px;
 }
 
-.logo{
-    color:#ff65c7;
-    font-size:22px;
-    font-weight:bold;
-    letter-spacing:2px;
+.header h1{
+font-size:38px;
+margin:0 0 10px;
 }
 
-h1{
-    font-size:46px;
-    margin:15px 0;
-    background:
-        linear-gradient(
-            90deg,
-            #ff72c8,
-            #8b7aff,
-            #55dfff
-        );
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
+.header p{
+color:#b8c2d9;
 }
 
-.id{
-    color:#888;
-    font-size:13px;
-}
-
-section{
-    margin:20px 0;
-    padding:25px;
-    border-radius:25px;
-    background:#ffffff0b;
-    border:1px solid #ffffff18;
-    backdrop-filter:blur(12px);
-}
-
-h2{
-    color:#ff82d2;
-    margin-top:0;
-}
-
-.gallery{
-    display:grid;
-    grid-template-columns:
-        repeat(
-            auto-fill,
-            minmax(160px,1fr)
-        );
-    gap:14px;
-}
-
-.photo{
-    aspect-ratio:1;
-    border-radius:18px;
-    overflow:hidden;
-    cursor:pointer;
-    background:#111;
-}
-
-.photo img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-}
-
-video{
-    width:100%;
-    max-width:800px;
-    display:block;
-    margin:15px auto;
-    border-radius:18px;
-    background:#000;
+.card{
+background:rgba(255,255,255,.07);
+border:1px solid rgba(255,255,255,.12);
+border-radius:24px;
+padding:22px;
+margin:20px 0;
+box-shadow:0 15px 40px rgba(0,0,0,.25);
 }
 
 .message{
-    padding:25px;
-    border-radius:20px;
-    background:
-        linear-gradient(
-            135deg,
-            #522044,
-            #34305d
-        );
-    white-space:pre-wrap;
-    line-height:1.8;
-    overflow-wrap:anywhere;
+font-size:19px;
+line-height:1.7;
+white-space:pre-wrap;
 }
 
-.empty{
-    padding:35px;
-    text-align:center;
-    color:#888;
+.gallery{
+display:grid;
+grid-template-columns:
+repeat(auto-fit,minmax(220px,1fr));
+gap:15px;
+}
+
+.gallery img,
+.gallery video{
+width:100%;
+border-radius:18px;
+display:block;
+background:#05070c;
 }
 
 .footer{
-    text-align:center;
-    color:#777;
-    padding:30px 10px;
-    font-size:13px;
-}
-
-#viewer{
-    display:none;
-    position:fixed;
-    inset:0;
-    background:#000e;
-    align-items:center;
-    justify-content:center;
-    padding:20px;
-    z-index:9999;
-}
-
-#viewer img{
-    max-width:100%;
-    max-height:90vh;
-    border-radius:15px;
-}
-
-.close{
-    position:absolute;
-    right:20px;
-    top:8px;
-    font-size:42px;
-    color:white;
-    cursor:pointer;
-}
-
-@media(max-width:600px){
-
-    main{
-        padding:12px;
-    }
-
-    h1{
-        font-size:36px;
-    }
-
-    section{
-        padding:18px;
-    }
-
-    .gallery{
-        grid-template-columns:
-            repeat(2,1fr);
-    }
-
+text-align:center;
+color:#9ba7c2;
+margin-top:35px;
+font-size:14px;
 }
 
 </style>
@@ -818,119 +1425,88 @@ video{
 
 <body>
 
-<main>
+<div class="container">
 
-<header>
+<div class="header">
 
-<div class="logo">
-♥ MEMORY QR
-</div>
+<h1>💖 Memory QR</h1>
 
-<h1>
-Your Memories, Forever.
-</h1>
-
-<div class="id">
-Memory ID: {{ memory_id }}
-</div>
-
-</header>
-
-<section>
-
-<h2>
-📸 Beautiful Moments
-</h2>
-
-<div class="gallery">
-
-{{ photo_html | safe }}
+<p>
+A special memory, saved forever.
+</p>
 
 </div>
 
-</section>
+{% if message %}
 
-<section>
+<div class="card">
 
-<h2>
-🎥 Memory Videos
-</h2>
-
-{{ video_html | safe }}
-
-</section>
-
-<section>
-
-<h2>
-💌 Special Message
-</h2>
+<h2>💌 Message</h2>
 
 <div class="message">
 {{ message }}
 </div>
 
-</section>
-
-<div class="footer">
-This site is made by Aquib Khan ❤️
 </div>
 
-</main>
+{% endif %}
 
-<div
-id="viewer"
-onclick="closePhoto()">
+{% if media %}
 
-<span
-class="close">
-×
-</span>
+<div class="card">
+
+<h2>📸 Memories</h2>
+
+<div class="gallery">
+
+{% for item in media %}
+
+{% if item.type == "image" %}
 
 <img
-id="large"
-alt="Large photo">
+src="{{ item.url }}"
+loading="lazy"
+>
+
+{% elif item.type == "video" %}
+
+<video
+controls
+preload="metadata"
+src="{{ item.url }}"
+></video>
+
+{% endif %}
+
+{% endfor %}
 
 </div>
 
-<script>
+</div>
 
-function openPhoto(src){
+{% endif %}
 
-    document.getElementById(
-        "large"
-    ).src = src;
+<div class="footer">
 
-    document.getElementById(
-        "viewer"
-    ).style.display = "flex";
+This site is made by Aquib Khan ❤️
 
-}
+</div>
 
-function closePhoto(){
-
-    document.getElementById(
-        "viewer"
-    ).style.display = "none";
-
-}
-
-</script>
+</div>
 
 </body>
 
 </html>
         """,
-        memory_id=escape(memory_id),
-        photo_html=photo_html,
-        video_html=video_html,
-        message=safe_message
+        memory_id=memory_id,
+        message=message,
+        media=media
     )
 
 
-# -------------------------------------------------
+# =========================================================
 # ADMIN LOGIN
-# -------------------------------------------------
+# =========================================================
 
 @app.route(
     "/admin/login",
@@ -945,7 +1521,7 @@ def admin_login():
         username = request.form.get(
             "username",
             ""
-        ).strip()
+        )
 
         password = request.form.get(
             "password",
@@ -957,9 +1533,9 @@ def admin_login():
             and password == ADMIN_PASSWORD
         ):
 
-            session[
-                "admin_logged_in"
-            ] = True
+            session.clear()
+
+            session["admin_logged_in"] = True
 
             return redirect(
                 url_for(
@@ -968,7 +1544,7 @@ def admin_login():
             )
 
         error = (
-            "Invalid username or password"
+            "Invalid username or password."
         )
 
     return render_template_string(
@@ -983,93 +1559,137 @@ def admin_login():
 
 <meta
 name="viewport"
-content="width=device-width,initial-scale=1">
+content="width=device-width,initial-scale=1.0"
+>
 
 <title>Memory QR Admin Login</title>
 
 <style>
 
 *{
-    box-sizing:border-box;
+box-sizing:border-box;
 }
 
 body{
-    margin:0;
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-family:Arial,sans-serif;
-    color:white;
-    background:
-        radial-gradient(
-            circle at top,
-            #35145f,
-            transparent 45%
-        ),
-        linear-gradient(
-            135deg,
-            #070914,
-            #120b25,
-            #061b25
-        );
+margin:0;
+min-height:100vh;
+display:flex;
+align-items:center;
+justify-content:center;
+font-family:Arial,sans-serif;
+background:
+radial-gradient(
+circle at top,
+#202b58,
+#080b18 60%
+);
+color:white;
+padding:20px;
 }
 
 .login{
-    width:92%;
-    max-width:430px;
-    padding:35px;
-    border-radius:28px;
-    background:#ffffff0d;
-    border:1px solid #ffffff18;
-    backdrop-filter:blur(18px);
+width:min(430px,100%);
+background:rgba(255,255,255,.08);
+border:1px solid rgba(255,255,255,.14);
+border-radius:26px;
+padding:32px;
+box-shadow:0 25px 70px rgba(0,0,0,.45);
 }
 
 .logo{
-    text-align:center;
-    color:#ff69c8;
-    font-size:22px;
-    font-weight:bold;
-    letter-spacing:2px;
+width:72px;
+height:72px;
+margin:auto;
+border-radius:22px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:38px;
+background:
+linear-gradient(
+135deg,
+#ff4d8d,
+#7c5cff
+);
 }
 
 h1{
-    text-align:center;
-    margin:15px 0 25px;
+text-align:center;
+margin:18px 0 7px;
+}
+
+.sub{
+text-align:center;
+color:#aeb8d0;
+margin-bottom:25px;
+}
+
+label{
+display:block;
+margin:14px 0 7px;
+color:#dce3f5;
+font-size:14px;
+}
+
+.inputbox{
+display:flex;
+align-items:center;
+background:#0c1122;
+border:1px solid #293453;
+border-radius:14px;
+overflow:hidden;
 }
 
 input{
-    width:100%;
-    padding:15px;
-    margin:7px 0;
-    border-radius:14px;
-    border:1px solid #ffffff20;
-    background:#080912;
-    color:white;
-    outline:none;
+width:100%;
+border:0;
+outline:0;
+background:transparent;
+color:white;
+padding:14px;
+font-size:16px;
+}
+
+.eye{
+padding:0 14px;
+cursor:pointer;
+font-size:20px;
 }
 
 button{
-    width:100%;
-    padding:16px;
-    margin-top:15px;
-    border:0;
-    border-radius:15px;
-    color:white;
-    font-size:16px;
-    font-weight:bold;
-    background:
-        linear-gradient(
-            90deg,
-            #ff4fb8,
-            #755cff
-        );
+width:100%;
+margin-top:22px;
+border:0;
+border-radius:14px;
+padding:15px;
+font-size:16px;
+font-weight:bold;
+color:white;
+cursor:pointer;
+background:
+linear-gradient(
+135deg,
+#ff4d8d,
+#7657ff
+);
 }
 
 .error{
-    text-align:center;
-    color:#ff8585;
-    margin-bottom:12px;
+background:rgba(255,70,100,.13);
+border:1px solid rgba(255,70,100,.35);
+padding:12px;
+border-radius:12px;
+color:#ffb5c5;
+margin-bottom:15px;
+text-align:center;
+}
+
+.back{
+display:block;
+text-align:center;
+margin-top:20px;
+color:#aeb8d0;
+text-decoration:none;
 }
 
 </style>
@@ -1081,12 +1701,16 @@ button{
 <div class="login">
 
 <div class="logo">
-♥ MEMORY QR
+💖
 </div>
 
 <h1>
-Admin Login
+Memory QR
 </h1>
+
+<div class="sub">
+Admin Dashboard
+</div>
 
 {% if error %}
 
@@ -1098,27 +1722,83 @@ Admin Login
 
 <form method="POST">
 
+<label>
+Username
+</label>
+
+<div class="inputbox">
+
 <input
 type="text"
 name="username"
-placeholder="Username"
 autocomplete="username"
-required>
+required
+>
+
+</div>
+
+<label>
+Password
+</label>
+
+<div class="inputbox">
 
 <input
+id="password"
 type="password"
 name="password"
-placeholder="Password"
 autocomplete="current-password"
-required>
+required
+>
+
+<div
+class="eye"
+onclick="togglePassword()"
+>
+👁️
+</div>
+
+</div>
 
 <button type="submit">
-LOGIN
+Login to Dashboard
 </button>
 
 </form>
 
+<a
+class="back"
+href="/"
+>
+← Back to Website
+</a>
+
 </div>
+
+<script>
+
+function togglePassword(){
+
+const input =
+document.getElementById(
+"password"
+);
+
+if(
+input.type === "password"
+){
+
+input.type = "text";
+
+}else{
+
+input.type = "password";
+
+}
+
+}
+
+</script>
 
 </body>
 
@@ -1128,123 +1808,440 @@ LOGIN
     )
 
 
-# -------------------------------------------------
+# =========================================================
 # ADMIN DASHBOARD
-# -------------------------------------------------
+# =========================================================
 
 @app.route("/admin")
 def admin_dashboard():
 
-    if not admin_required():
+    login_check = require_admin()
 
-        return redirect(
-            url_for("admin_login")
+    if login_check:
+        return login_check
+
+    memories = get_all_memories()
+
+    trash = get_all_trash()
+
+    stats = get_stats()
+
+    query = request.args.get(
+        "q",
+        ""
+    ).strip().lower()
+
+    if query:
+
+        memories = [
+            m for m in memories
+            if (
+                query in m["id"].lower()
+                or query in m["created"].lower()
+                or query in m["message_text"].lower()
+            )
+        ]
+
+        trash = [
+            m for m in trash
+            if (
+                query in m["id"].lower()
+                or query in m["created"].lower()
+                or query in m["message_text"].lower()
+            )
+        ]
+
+    for memory in memories:
+
+        ensure_qr(
+            memory["id"]
         )
 
-    memories = []
+        memory["qr"] = True
 
-    if os.path.isdir(
-        UPLOAD_FOLDER
+    return render_template_string(
+        ADMIN_DASHBOARD,
+        memories=memories,
+        trash=trash,
+        stats=stats,
+        query=query
+    )
+
+
+# =========================================================
+# MOVE TO TRASH
+# =========================================================
+
+@app.route(
+    "/admin/trash/<memory_id>",
+    methods=["POST"]
+)
+def admin_trash(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if safe_memory_id(
+        memory_id
     ):
 
-        for memory_id in sorted(
-            os.listdir(UPLOAD_FOLDER),
-            reverse=True
-        ):
+        try:
 
-            folder = get_memory_folder(
+            move_to_trash(
                 memory_id
             )
 
-            if not os.path.isdir(folder):
-                continue
+        except Exception:
+            pass
 
-            photos = 0
-            videos = 0
-
-            for filename in os.listdir(
-                folder
-            ):
-
-                ext = os.path.splitext(
-                    filename
-                )[1].lower()
-
-                if ext in {
-                    ".jpg",
-                    ".jpeg",
-                    ".png",
-                    ".webp",
-                    ".gif"
-                }:
-
-                    photos += 1
-
-                elif ext in {
-                    ".mp4",
-                    ".webm",
-                    ".mov",
-                    ".m4v",
-                    ".mkv"
-                }:
-
-                    videos += 1
-
-            memories.append({
-                "id": memory_id,
-                "photos": photos,
-                "videos": videos
-            })
-
-    total_memories = len(
-        memories
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
     )
 
-    total_photos = sum(
-        item["photos"]
-        for item in memories
+
+@app.route(
+    "/admin/trash-selected",
+    methods=["POST"]
+)
+def admin_trash_selected():
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    selected = request.form.getlist(
+        "selected"
     )
 
-    total_videos = sum(
-        item["videos"]
-        for item in memories
+    for memory_id in selected:
+
+        if safe_memory_id(
+            memory_id
+        ):
+
+            try:
+
+                move_to_trash(
+                    memory_id
+                )
+
+            except Exception:
+                pass
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
     )
 
-    try:
 
-        stats = get_stats()
+# =========================================================
+# DIRECT DELETE SELECTED
+# =========================================================
 
-    except Exception:
+@app.route(
+    "/admin/delete-selected",
+    methods=["POST"]
+)
+def admin_delete_selected():
 
-        stats = {
-            "total_visits": 0,
-            "today_visits": 0,
-            "seven_day_visits": 0,
-            "memory_views": 0,
-            "most_viewed": None,
-            "devices": [],
-            "browsers": []
-        }
+    login_check = require_admin()
 
-    most_viewed = stats.get(
-        "most_viewed"
+    if login_check:
+        return login_check
+
+    selected = request.form.getlist(
+        "selected"
     )
 
-    if most_viewed:
+    for memory_id in selected:
 
-        most_viewed_id = most_viewed[0]
-        most_viewed_count = most_viewed[1]
+        if safe_memory_id(
+            memory_id
+        ):
 
-    else:
+            try:
 
-        most_viewed_id = "—"
-        most_viewed_count = 0
+                direct_delete_memory(
+                    memory_id
+                )
 
-    return render_template_string(
-        """
+            except Exception:
+                pass
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
+    )
+
+
+# =========================================================
+# RESTORE
+# =========================================================
+
+@app.route(
+    "/admin/restore/<memory_id>",
+    methods=["POST"]
+)
+def admin_restore(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if safe_memory_id(
+        memory_id
+    ):
+
+        try:
+
+            restore_from_trash(
+                memory_id
+            )
+
+        except Exception:
+            pass
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
+    )
+
+
+# =========================================================
+# PERMANENT DELETE
+# =========================================================
+
+@app.route(
+    "/admin/permanent-delete/<memory_id>",
+    methods=["POST"]
+)
+def admin_permanent_delete(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if safe_memory_id(
+        memory_id
+    ):
+
+        try:
+
+            permanent_delete(
+                memory_id
+            )
+
+        except Exception:
+            pass
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
+    )
+
+
+@app.route(
+    "/admin/permanent-delete-selected",
+    methods=["POST"]
+)
+def admin_permanent_delete_selected():
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    selected = request.form.getlist(
+        "selected"
+    )
+
+    for memory_id in selected:
+
+        if safe_memory_id(
+            memory_id
+        ):
+
+            try:
+
+                permanent_delete(
+                    memory_id
+                )
+
+            except Exception:
+                pass
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
+    )
+
+
+# =========================================================
+# QR ACTIONS
+# =========================================================
+
+@app.route(
+    "/admin/trash-qr/<memory_id>",
+    methods=["POST"]
+)
+def admin_trash_qr(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if safe_memory_id(
+        memory_id
+    ):
+
+        qr_path = get_qr_path(
+            memory_id
+        )
+
+        if os.path.exists(
+            qr_path
+        ):
+
+            os.remove(
+                qr_path
+            )
+
+    return redirect(
+        url_for(
+            "admin_dashboard"
+        )
+    )
+
+
+@app.route(
+    "/admin/download-qr/<memory_id>"
+)
+def admin_download_qr(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if not safe_memory_id(
+        memory_id
+    ):
+
+        return "Invalid memory", 400
+
+    if not os.path.isdir(
+        get_memory_folder(
+            memory_id
+        )
+    ):
+
+        return "Memory not found", 404
+
+    ensure_qr(
+        memory_id
+    )
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if not os.path.isfile(
+        qr_path
+    ):
+
+        return "QR unavailable", 404
+
+    return send_from_directory(
+        QR_DIR,
+        memory_id + ".png",
+        as_attachment=True
+    )
+
+
+@app.route(
+    "/admin/view-qr/<memory_id>"
+)
+def admin_view_qr(memory_id):
+
+    login_check = require_admin()
+
+    if login_check:
+        return login_check
+
+    if not safe_memory_id(
+        memory_id
+    ):
+
+        return "Invalid memory", 400
+
+    if not os.path.isdir(
+        get_memory_folder(
+            memory_id
+        )
+    ):
+
+        return "Memory not found", 404
+
+    ensure_qr(
+        memory_id
+    )
+
+    qr_path = get_qr_path(
+        memory_id
+    )
+
+    if not os.path.isfile(
+        qr_path
+    ):
+
+        return "QR unavailable", 404
+
+    return send_from_directory(
+        QR_DIR,
+        memory_id + ".png"
+    )
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+
+@app.route(
+    "/admin/logout"
+)
+def admin_logout():
+
+    session.clear()
+
+    return redirect(
+        url_for(
+            "admin_login"
+        )
+    )
+
+
+# =========================================================
+# ADMIN DASHBOARD HTML
+# =========================================================
+
+ADMIN_DASHBOARD = """
+
 <!DOCTYPE html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -1252,227 +2249,401 @@ def admin_dashboard():
 
 <meta
 name="viewport"
-content="width=device-width,initial-scale=1">
+content="width=device-width,initial-scale=1.0"
+>
+
+<meta
+name="robots"
+content="noindex,nofollow"
+>
 
 <title>Memory QR Dashboard</title>
 
 <style>
 
 *{
-    box-sizing:border-box;
+box-sizing:border-box;
 }
 
 body{
-    margin:0;
-    color:white;
-    font-family:Arial,sans-serif;
-    background:
-        radial-gradient(
-            circle at top,
-            #35145f,
-            transparent 40%
-        ),
-        linear-gradient(
-            135deg,
-            #070914,
-            #120b25,
-            #061b25
-        );
+margin:0;
+font-family:Arial,sans-serif;
+background:
+linear-gradient(
+135deg,
+#070a15,
+#0d1225,
+#081c22
+);
+color:white;
+min-height:100vh;
 }
 
-main{
-    max-width:1150px;
-    margin:auto;
-    padding:20px;
+a{
+color:inherit;
 }
 
-header{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:15px;
-    padding:20px 0 30px;
+.topbar{
+position:sticky;
+top:0;
+z-index:20;
+background:rgba(7,10,21,.88);
+backdrop-filter:blur(18px);
+border-bottom:1px solid rgba(255,255,255,.09);
 }
 
-.logo{
-    color:#ff69c8;
-    font-size:22px;
-    font-weight:bold;
-    letter-spacing:2px;
+.topbar-inner{
+width:min(1250px,94%);
+margin:auto;
+min-height:76px;
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:15px;
+}
+
+.brand{
+display:flex;
+align-items:center;
+gap:12px;
+font-weight:bold;
+font-size:20px;
+}
+
+.brand-icon{
+width:44px;
+height:44px;
+border-radius:14px;
+display:flex;
+align-items:center;
+justify-content:center;
+background:
+linear-gradient(
+135deg,
+#ff4d8d,
+#7657ff
+);
 }
 
 .logout{
-    text-decoration:none;
-    color:white;
-    padding:11px 16px;
-    border-radius:12px;
-    background:#ffffff12;
-    border:1px solid #ffffff20;
+text-decoration:none;
+padding:11px 16px;
+border-radius:12px;
+background:rgba(255,255,255,.08);
+border:1px solid rgba(255,255,255,.1);
 }
 
-h1{
-    font-size:38px;
-    margin:10px 0;
+.container{
+width:min(1250px,94%);
+margin:auto;
+padding:28px 0 60px;
 }
 
-.subtitle{
-    color:#999;
+.hero{
+margin-bottom:24px;
+}
+
+.hero h1{
+font-size:36px;
+margin:0 0 8px;
+}
+
+.hero p{
+color:#aeb8d0;
+margin:0;
 }
 
 .stats{
-    display:grid;
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(160px,1fr)
-        );
-    gap:14px;
-    margin:20px 0;
+display:grid;
+grid-template-columns:
+repeat(4,1fr);
+gap:15px;
+margin:25px 0;
 }
 
 .stat{
-    padding:22px;
-    border-radius:20px;
-    background:#ffffff0d;
-    border:1px solid #ffffff18;
+padding:20px;
+border-radius:20px;
+background:rgba(255,255,255,.065);
+border:1px solid rgba(255,255,255,.1);
+}
+
+.stat-icon{
+font-size:25px;
 }
 
 .stat-number{
-    font-size:30px;
-    font-weight:bold;
-    color:#ff72ca;
+font-size:30px;
+font-weight:bold;
+margin-top:8px;
 }
 
 .stat-label{
-    color:#999;
-    margin-top:5px;
+color:#9eabc6;
+font-size:14px;
+margin-top:4px;
 }
 
-.card{
-    margin:20px 0;
-    padding:22px;
-    border-radius:24px;
-    background:#ffffff0d;
-    border:1px solid #ffffff18;
+.tools{
+display:flex;
+gap:10px;
+align-items:center;
+flex-wrap:wrap;
+margin:22px 0;
 }
 
-.memory{
-    padding:20px 0;
-    border-bottom:1px solid #ffffff15;
+.search{
+flex:1;
+min-width:230px;
+display:flex;
+background:#0d1327;
+border:1px solid #263351;
+border-radius:14px;
+overflow:hidden;
 }
 
-.memory:last-child{
-    border-bottom:0;
+.search input{
+flex:1;
+background:transparent;
+border:0;
+outline:0;
+color:white;
+padding:13px 15px;
+font-size:15px;
+}
+
+.search button{
+border:0;
+background:#1b2540;
+color:white;
+padding:0 18px;
+cursor:pointer;
+}
+
+.bulk{
+border:0;
+border-radius:13px;
+padding:13px 16px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.bulk-select{
+background:#1b2540;
+color:white;
+}
+
+.bulk-trash{
+background:#ff426e;
+color:white;
+}
+
+.bulk-delete{
+background:#b72846;
+color:white;
+}
+
+.tabs{
+display:flex;
+gap:8px;
+margin-bottom:20px;
+}
+
+.tab{
+padding:11px 18px;
+border-radius:12px;
+background:rgba(255,255,255,.06);
+border:1px solid rgba(255,255,255,.09);
+cursor:pointer;
+color:white;
+}
+
+.tab.active{
+background:
+linear-gradient(
+135deg,
+#6f56ff,
+#a43cff
+);
+}
+
+.section{
+display:none;
+}
+
+.section.active{
+display:block;
+}
+
+.memory-card{
+position:relative;
+display:grid;
+grid-template-columns:
+auto 1fr auto;
+gap:16px;
+align-items:center;
+padding:18px;
+margin-bottom:13px;
+border-radius:20px;
+background:rgba(255,255,255,.06);
+border:1px solid rgba(255,255,255,.09);
+}
+
+.checkbox{
+width:20px;
+height:20px;
+}
+
+.memory-main{
+min-width:0;
 }
 
 .memory-id{
-    font-size:19px;
-    font-weight:bold;
-    color:#ff82d2;
-    word-break:break-all;
+font-size:17px;
+font-weight:bold;
+word-break:break-all;
 }
 
-.info{
-    color:#999;
-    margin:8px 0 15px;
+.meta{
+display:flex;
+flex-wrap:wrap;
+gap:7px;
+margin-top:9px;
+}
+
+.badge{
+padding:6px 9px;
+border-radius:9px;
+background:rgba(255,255,255,.07);
+color:#b9c4dd;
+font-size:12px;
+}
+
+.memory-date{
+color:#8e9bb7;
+font-size:13px;
+margin-top:8px;
 }
 
 .actions{
-    display:grid;
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(150px,1fr)
-        );
-    gap:10px;
+display:flex;
+gap:7px;
+flex-wrap:wrap;
+justify-content:flex-end;
 }
 
-.btn{
-    display:block;
-    width:100%;
-    padding:13px;
-    border:0;
-    border-radius:13px;
-    color:white;
-    text-decoration:none;
-    text-align:center;
-    font-weight:bold;
-    cursor:pointer;
+.action{
+text-decoration:none;
+border:0;
+cursor:pointer;
+padding:9px 11px;
+border-radius:10px;
+font-size:12px;
+font-weight:bold;
+background:#18223a;
+color:white;
 }
 
-.open{
-    background:
-        linear-gradient(
-            90deg,
-            #ff4fb8,
-            #755cff
-        );
+.action.open{
+background:#3566ff;
 }
 
-.qr{
-    background:
-        linear-gradient(
-            90deg,
-            #514b91,
-            #39456e
-        );
+.action.qr{
+background:#7b4dff;
 }
 
-.download{
-    background:
-        linear-gradient(
-            90deg,
-            #e83c9f,
-            #805cff
-        );
+.action.download{
+background:#168c69;
 }
 
-.delete{
-    background:#5b2028;
+.action.trash{
+background:#d83d5d;
+}
+
+.action.restore{
+background:#178b69;
+}
+
+.action.delete{
+background:#9e243e;
+}
+
+.action-form{
+display:inline;
 }
 
 .empty{
-    color:#888;
-    text-align:center;
-    padding:30px;
+padding:45px 20px;
+text-align:center;
+border-radius:20px;
+background:rgba(255,255,255,.04);
+border:1px dashed rgba(255,255,255,.15);
+color:#9eabc6;
 }
 
-.analytics{
-    display:grid;
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(200px,1fr)
-        );
-    gap:12px;
+.trash-head{
+padding:16px;
+margin-bottom:18px;
+border-radius:18px;
+background:rgba(255,70,100,.08);
+border:1px solid rgba(255,70,100,.15);
+color:#ffb2c1;
 }
 
-.analytics-box{
-    padding:18px;
-    border-radius:17px;
-    background:#080912;
-    border:1px solid #ffffff12;
+@media(max-width:900px){
+
+.stats{
+grid-template-columns:
+repeat(2,1fr);
 }
 
-.analytics-box strong{
-    display:block;
-    color:#ff82d2;
-    margin-bottom:6px;
+.memory-card{
+grid-template-columns:auto 1fr;
+}
+
+.actions{
+grid-column:2;
+justify-content:flex-start;
+}
+
 }
 
 @media(max-width:600px){
 
-    main{
-        padding:14px;
-    }
+.container{
+width:92%;
+}
 
-    header{
-        align-items:flex-start;
-    }
+.hero h1{
+font-size:29px;
+}
 
-    h1{
-        font-size:30px;
-    }
+.stats{
+grid-template-columns:
+1fr 1fr;
+gap:10px;
+}
+
+.stat{
+padding:15px;
+}
+
+.stat-number{
+font-size:24px;
+}
+
+.memory-card{
+padding:14px;
+}
+
+.actions{
+grid-column:1 / -1;
+}
+
+.action{
+flex:1;
+text-align:center;
+}
 
 }
 
@@ -1482,74 +2653,96 @@ h1{
 
 <body>
 
-<main>
+<div class="topbar">
 
-<header>
+<div class="topbar-inner">
+
+<div class="brand">
+
+<div class="brand-icon">
+💖
+</div>
 
 <div>
 
-<div class="logo">
-♥ MEMORY QR
-</div>
+Memory QR
 
-<h1>
+<br>
+
+<span
+style="font-size:12px;color:#8e9bb7;font-weight:normal"
+>
 Admin Dashboard
-</h1>
+</span>
 
-<div class="subtitle">
-Manage your memories, QR codes and links.
 </div>
 
 </div>
 
 <a
 class="logout"
-href="/admin/logout">
+href="/admin/logout"
+>
 Logout
 </a>
 
-</header>
+</div>
 
+</div>
+
+<div class="container">
+
+<div class="hero">
+
+<h1>
+Memory Dashboard
+</h1>
+
+<p>
+Manage every memory created on your website.
+</p>
+
+</div>
 
 <div class="stats">
 
 <div class="stat">
 
+<div class="stat-icon">
+💾
+</div>
+
 <div class="stat-number">
-{{ total_memories }}
+{{ memories|length }}
 </div>
 
 <div class="stat-label">
-Total Memories
+Active Memories
 </div>
 
 </div>
 
 <div class="stat">
 
+<div class="stat-icon">
+🗑️
+</div>
+
 <div class="stat-number">
-{{ total_photos }}
+{{ trash|length }}
 </div>
 
 <div class="stat-label">
-Total Photos
+Trash
 </div>
 
 </div>
 
 <div class="stat">
 
-<div class="stat-number">
-{{ total_videos }}
+<div class="stat-icon">
+👀
 </div>
-
-<div class="stat-label">
-Total Videos
-</div>
-
-</div>
-
-<div class="stat">
 
 <div class="stat-number">
 {{ stats.get("memory_views",0) }}
@@ -1561,121 +2754,200 @@ Memory Views
 
 </div>
 
+<div class="stat">
+
+<div class="stat-icon">
+📊
 </div>
 
-
-<div class="card">
-
-<h2>
-📊 Analytics
-</h2>
-
-<div class="analytics">
-
-<div class="analytics-box">
-
-<strong>
-Total Visits
-</strong>
-
+<div class="stat-number">
 {{ stats.get("total_visits",0) }}
-
 </div>
 
-<div class="analytics-box">
-
-<strong>
-Today
-</strong>
-
-{{ stats.get("today_visits",0) }}
-
-</div>
-
-<div class="analytics-box">
-
-<strong>
-Last 7 Days
-</strong>
-
-{{ stats.get("seven_day_visits",0) }}
-
-</div>
-
-<div class="analytics-box">
-
-<strong>
-Most Viewed Memory
-</strong>
-
-{{ most_viewed_id }}
-
-<br>
-
-{{ most_viewed_count }} views
-
+<div class="stat-label">
+Total Visits
 </div>
 
 </div>
 
 </div>
 
+<div class="tools">
 
-<div class="card">
+<form
+class="search"
+method="GET"
+action="/admin"
+>
 
-<h2>
-💾 Your Memories
-</h2>
+<input
+type="text"
+name="q"
+value="{{ query }}"
+placeholder="Search memory ID, date or message..."
+>
+
+<button type="submit">
+🔎
+</button>
+
+</form>
+
+</div>
+
+<div class="tabs">
+
+<button
+type="button"
+class="tab active"
+id="activeTabButton"
+onclick="showTab('active')"
+>
+💾 Memories
+({{ memories|length }})
+</button>
+
+<button
+type="button"
+class="tab"
+id="trashTabButton"
+onclick="showTab('trash')"
+>
+🗑️ Trash
+({{ trash|length }})
+</button>
+
+</div>
+
+<!-- ACTIVE -->
+
+<div
+id="active"
+class="section active"
+>
+
+<form
+method="POST"
+action="/admin/trash-selected"
+id="activeForm"
+>
+
+<div
+style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"
+>
+
+<button
+type="button"
+class="bulk bulk-select"
+onclick="selectAllActive()"
+>
+☑ Select All
+</button>
+
+<button
+type="button"
+class="bulk bulk-trash"
+onclick="submitActiveTrash()"
+>
+🗑 Move Selected to Trash
+</button>
+
+<button
+type="button"
+class="bulk bulk-delete"
+onclick="deleteSelected()"
+>
+❌ Delete Selected
+</button>
+
+</div>
 
 {% if memories %}
 
-{% for memory in memories %}
+{% for m in memories %}
 
-<div class="memory">
+<div class="memory-card">
+
+<input
+class="checkbox active-check"
+type="checkbox"
+name="selected"
+value="{{ m.id }}"
+>
+
+<div class="memory-main">
 
 <div class="memory-id">
-Memory {{ memory.id }}
+{{ m.id }}
 </div>
 
-<div class="info">
+<div class="meta">
 
-📸 {{ memory.photos }} photos
-&nbsp;&nbsp;
-🎥 {{ memory.videos }} videos
+<span class="badge">
+📸 {{ m.photos }} Photos
+</span>
+
+<span class="badge">
+🎬 {{ m.videos }} Videos
+</span>
+
+{% if m.message %}
+
+<span class="badge">
+💌 Message
+</span>
+
+{% endif %}
+
+<span class="badge">
+🔗 QR Saved
+</span>
+
+</div>
+
+<div class="memory-date">
+Created: {{ m.created }}
+</div>
 
 </div>
 
 <div class="actions">
 
 <a
-class="btn open"
-href="/memory/{{ memory.id }}"
-target="_blank">
-❤️ Open Memory
+class="action open"
+href="/memory/{{ m.id }}"
+target="_blank"
+>
+Open
 </a>
 
 <a
-class="btn qr"
-href="/static/qr/{{ memory.id }}.png"
-target="_blank">
-🔳 View QR
+class="action qr"
+href="/admin/view-qr/{{ m.id }}"
+target="_blank"
+>
+View QR
 </a>
 
 <a
-class="btn download"
-href="/download-qr/{{ memory.id }}">
-⬇️ Download QR
+class="action download"
+href="/admin/download-qr/{{ m.id }}"
+>
+Download QR
 </a>
 
 <form
+class="action-form"
 method="POST"
-action="/admin/delete/{{ memory.id }}"
-onsubmit="return confirm('Delete this memory permanently?');">
+action="/admin/trash/{{ m.id }}"
+>
 
 <button
-class="btn delete"
-type="submit">
-🗑️ Delete
+class="action trash"
+type="submit"
+onclick="return confirm('Move this memory to Trash?')"
+>
+Trash
 </button>
 
 </form>
@@ -1689,112 +2961,436 @@ type="submit">
 {% else %}
 
 <div class="empty">
-No memories created yet.
+
+<h2>
+No memories found
+</h2>
+
+<p>
+New customer memories will appear here automatically.
+</p>
+
+</div>
+
+{% endif %}
+
+</form>
+
+</div>
+
+
+<!-- TRASH -->
+
+<div
+id="trash"
+class="section"
+>
+
+<div class="trash-head">
+
+<strong>
+🗑️ Trash
+</strong>
+
+<br>
+
+Memories moved here are not permanently deleted yet.
+You can restore them or permanently delete them.
+
+</div>
+
+{% if trash %}
+
+<div
+style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"
+>
+
+<button
+type="button"
+class="bulk bulk-select"
+onclick="selectAllTrash()"
+>
+☑ Select All
+</button>
+
+<button
+type="button"
+class="bulk bulk-delete"
+onclick="permanentDeleteSelected()"
+>
+⚠️ Permanently Delete Selected
+</button>
+
+</div>
+
+{% for m in trash %}
+
+<div class="memory-card">
+
+<input
+class="checkbox trash-check"
+type="checkbox"
+value="{{ m.id }}"
+>
+
+<div class="memory-main">
+
+<div class="memory-id">
+{{ m.id }}
+</div>
+
+<div class="meta">
+
+<span class="badge">
+📸 {{ m.photos }} Photos
+</span>
+
+<span class="badge">
+🎬 {{ m.videos }} Videos
+</span>
+
+{% if m.message %}
+
+<span class="badge">
+💌 Message
+</span>
+
+{% endif %}
+
+</div>
+
+<div class="memory-date">
+Created: {{ m.created }}
+</div>
+
+</div>
+
+<div class="actions">
+
+<form
+class="action-form"
+method="POST"
+action="/admin/restore/{{ m.id }}"
+>
+
+<button
+class="action restore"
+type="submit"
+>
+↩ Restore
+</button>
+
+</form>
+
+<form
+class="action-form"
+method="POST"
+action="/admin/permanent-delete/{{ m.id }}"
+>
+
+<button
+class="action delete"
+type="submit"
+onclick="return confirm('Permanently delete this memory? This cannot be undone.')"
+>
+Delete Forever
+</button>
+
+</form>
+
+</div>
+
+</div>
+
+{% endfor %}
+
+{% else %}
+
+<div class="empty">
+
+<h2>
+Trash is empty
+</h2>
+
+<p>
+Deleted memories will appear here before permanent deletion.
+</p>
+
 </div>
 
 {% endif %}
 
 </div>
 
-
-<div style="
-text-align:center;
-color:#777;
-padding:30px 0;
-font-size:13px;
-">
-
-This site is made by Aquib Khan ❤️
-
 </div>
 
-</main>
+
+<script>
+
+function showTab(tab){
+
+document
+.getElementById("active")
+.classList.remove("active");
+
+document
+.getElementById("trash")
+.classList.remove("active");
+
+document
+.getElementById("activeTabButton")
+.classList.remove("active");
+
+document
+.getElementById("trashTabButton")
+.classList.remove("active");
+
+if(tab === "active"){
+
+document
+.getElementById("active")
+.classList.add("active");
+
+document
+.getElementById("activeTabButton")
+.classList.add("active");
+
+}else{
+
+document
+.getElementById("trash")
+.classList.add("active");
+
+document
+.getElementById("trashTabButton")
+.classList.add("active");
+
+}
+
+}
+
+
+function selectAllActive(){
+
+const boxes =
+document.querySelectorAll(
+".active-check"
+);
+
+let allChecked = true;
+
+boxes.forEach(function(box){
+
+if(!box.checked){
+
+allChecked = false;
+
+}
+
+});
+
+boxes.forEach(function(box){
+
+box.checked = !allChecked;
+
+});
+
+}
+
+
+function submitActiveTrash(){
+
+const boxes =
+document.querySelectorAll(
+".active-check:checked"
+);
+
+if(boxes.length === 0){
+
+alert(
+"Please select at least one memory."
+);
+
+return;
+
+}
+
+if(!confirm(
+"Move selected memories to Trash?"
+)){
+
+return;
+
+}
+
+document
+.getElementById("activeForm")
+.submit();
+
+}
+
+
+function deleteSelected(){
+
+const boxes =
+document.querySelectorAll(
+".active-check:checked"
+);
+
+if(boxes.length === 0){
+
+alert(
+"Please select at least one memory."
+);
+
+return;
+
+}
+
+if(!confirm(
+"Delete selected memories permanently? This cannot be undone."
+)){
+
+return;
+
+}
+
+const form =
+document.createElement("form");
+
+form.method = "POST";
+
+form.action =
+"/admin/delete-selected";
+
+boxes.forEach(function(box){
+
+const input =
+document.createElement("input");
+
+input.type = "hidden";
+
+input.name = "selected";
+
+input.value = box.value;
+
+form.appendChild(input);
+
+});
+
+document.body.appendChild(form);
+
+form.submit();
+
+}
+
+
+function selectAllTrash(){
+
+const boxes =
+document.querySelectorAll(
+".trash-check"
+);
+
+let allChecked = true;
+
+boxes.forEach(function(box){
+
+if(!box.checked){
+
+allChecked = false;
+
+}
+
+});
+
+boxes.forEach(function(box){
+
+box.checked = !allChecked;
+
+});
+
+}
+
+
+function permanentDeleteSelected(){
+
+const boxes =
+document.querySelectorAll(
+".trash-check:checked"
+);
+
+if(boxes.length === 0){
+
+alert(
+"Please select at least one memory."
+);
+
+return;
+
+}
+
+if(!confirm(
+"Permanently delete selected memories? This cannot be undone."
+)){
+
+return;
+
+}
+
+const form =
+document.createElement("form");
+
+form.method = "POST";
+
+form.action =
+"/admin/permanent-delete-selected";
+
+boxes.forEach(function(box){
+
+const input =
+document.createElement("input");
+
+input.type = "hidden";
+
+input.name = "selected";
+
+input.value = box.value;
+
+form.appendChild(input);
+
+});
+
+document.body.appendChild(form);
+
+form.submit();
+
+}
+
+</script>
 
 </body>
 
 </html>
-        """,
-        memories=memories,
-        total_memories=total_memories,
-        total_photos=total_photos,
-        total_videos=total_videos,
-        stats=stats,
-        most_viewed_id=most_viewed_id,
-        most_viewed_count=most_viewed_count
-    )
+
+"""
 
 
-# -------------------------------------------------
-# DELETE MEMORY
-# -------------------------------------------------
-
-@app.route(
-    "/admin/delete/<memory_id>",
-    methods=["POST"]
-)
-def admin_delete(memory_id):
-
-    if not admin_required():
-
-        return redirect(
-            url_for("admin_login")
-        )
-
-    folder = get_memory_folder(
-        memory_id
-    )
-
-    if os.path.isdir(folder):
-
-        shutil.rmtree(
-            folder
-        )
-
-    qr_file = os.path.join(
-        QR_FOLDER,
-        memory_id + ".png"
-    )
-
-    if os.path.exists(
-        qr_file
-    ):
-
-        os.remove(
-            qr_file
-        )
-
-    return redirect(
-        url_for("admin_dashboard")
-    )
-
-
-# -------------------------------------------------
-# LOGOUT
-# -------------------------------------------------
-
-@app.route(
-    "/admin/logout"
-)
-def admin_logout():
-
-    session.pop(
-        "admin_logged_in",
-        None
-    )
-
-    return redirect(
-        url_for("admin_login")
-    )
-
-
-# -------------------------------------------------
+# =========================================================
 # RUN
-# -------------------------------------------------
+# =========================================================
 
 if __name__ == "__main__":
 
+    port = int(
+        os.environ.get(
+            "PORT",
+            "8000"
+        )
+    )
+
     app.run(
         host="0.0.0.0",
-        port=8000,
+        port=port,
         debug=False
     )

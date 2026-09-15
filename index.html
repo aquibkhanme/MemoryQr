@@ -7,235 +7,920 @@
 
 <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0">
+    content="width=device-width, initial-scale=1.0"
+>
 
 <meta
-    name="robots"
-    content="noindex,nofollow,noarchive">
+    name="description"
+    content="Memory QR - Create beautiful memories with photos, videos and personal messages."
+>
 
-<title>Memory QR</title>
+<title>Memory QR ❤️</title>
 
 <style>
 
 *{
     box-sizing:border-box;
+    margin:0;
+    padding:0;
+}
+
+html{
+    scroll-behavior:smooth;
 }
 
 body{
-    margin:0;
-    font-family:Arial,sans-serif;
-    color:white;
-    min-height:100vh;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    color:#fff;
+
     background:
-        radial-gradient(circle at top,#35145f 0%,transparent 40%),
-        linear-gradient(135deg,#070914,#120b25,#061b25);
+        radial-gradient(
+            circle at 10% 10%,
+            rgba(117,78,255,.18),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 90% 20%,
+            rgba(0,209,255,.12),
+            transparent 30%
+        ),
+        linear-gradient(
+            135deg,
+            #05060b,
+            #0b1020 50%,
+            #05060b
+        );
+
+    min-height:100vh;
 }
 
-.container{
+
+/* =========================
+   NAVBAR
+========================= */
+
+.navbar{
+
+    position:sticky;
+
+    top:0;
+
+    z-index:100;
+
     width:100%;
-    max-width:900px;
-    margin:auto;
-    padding:25px 18px 40px;
+
+    background:
+        rgba(5,7,14,.82);
+
+    backdrop-filter:
+        blur(18px);
+
+    border-bottom:
+        1px solid
+        rgba(255,255,255,.08);
+
 }
 
-.header{
-    text-align:center;
-    padding:30px 10px;
+.nav-inner{
+
+    width:min(
+        1100px,
+        92%
+    );
+
+    margin:auto;
+
+    height:68px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:space-between;
+
 }
 
 .logo{
-    font-size:22px;
-    font-weight:bold;
-    color:#ff6ac7;
-    letter-spacing:2px;
+
+    font-size:21px;
+
+    font-weight:900;
+
+    letter-spacing:.5px;
+
 }
 
-h1{
-    font-size:42px;
-    margin:15px 0 8px;
-    background:linear-gradient(90deg,#ff73ca,#8c7bff);
+.logo span{
+
+    color:#9b78ff;
+
+}
+
+.nav-link{
+
+    color:#cbd2e2;
+
+    text-decoration:none;
+
+    font-size:13px;
+
+}
+
+
+/* =========================
+   HERO
+========================= */
+
+.hero{
+
+    width:min(
+        1050px,
+        92%
+    );
+
+    margin:auto;
+
+    padding:
+        70px 0
+        45px;
+
+    text-align:center;
+
+}
+
+.hero-badge{
+
+    display:inline-flex;
+
+    align-items:center;
+
+    gap:7px;
+
+    padding:
+        8px 13px;
+
+    border-radius:30px;
+
+    background:
+        rgba(130,95,255,.12);
+
+    border:
+        1px solid
+        rgba(155,120,255,.22);
+
+    color:#c8baff;
+
+    font-size:12px;
+
+    margin-bottom:18px;
+
+}
+
+.hero h1{
+
+    font-size:
+        clamp(
+            38px,
+            8vw,
+            68px
+        );
+
+    line-height:1.05;
+
+    font-weight:950;
+
+    letter-spacing:-2px;
+
+}
+
+.hero h1 span{
+
+    background:
+        linear-gradient(
+            90deg,
+            #a47cff,
+            #63dfff
+        );
+
     -webkit-background-clip:text;
+
     background-clip:text;
+
     color:transparent;
+
 }
 
-.subtitle{
-    color:#aaa;
-    font-size:15px;
+.hero p{
+
+    max-width:650px;
+
+    margin:
+        18px auto 0;
+
+    color:#9ea8bd;
+
+    font-size:16px;
+
+    line-height:1.7;
+
+}
+
+
+/* =========================
+   MAIN CARD
+========================= */
+
+.main{
+
+    width:min(
+        900px,
+        92%
+    );
+
+    margin:auto;
+
+    padding-bottom:60px;
+
 }
 
 .card{
-    background:#ffffff0d;
-    border:1px solid #ffffff1c;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.075),
+            rgba(255,255,255,.025)
+        );
+
+    border:
+        1px solid
+        rgba(255,255,255,.1);
+
     border-radius:28px;
-    padding:25px;
-    margin-top:20px;
-    backdrop-filter:blur(15px);
+
+    padding:
+        clamp(
+            20px,
+            5vw,
+            38px
+        );
+
+    box-shadow:
+        0 25px 80px
+        rgba(0,0,0,.32);
+
+    backdrop-filter:
+        blur(20px);
+
 }
 
-.card h2{
-    margin-top:0;
-    color:#ff82d2;
+.card-title{
+
+    font-size:25px;
+
+    font-weight:900;
+
+    margin-bottom:8px;
+
 }
 
-.upload-box{
+.card-subtitle{
+
+    color:#8f9ab0;
+
+    font-size:13px;
+
+    line-height:1.6;
+
+    margin-bottom:28px;
+
+}
+
+
+/* =========================
+   UPLOAD SECTIONS
+========================= */
+
+.upload-section{
+
+    margin-top:22px;
+
+}
+
+.upload-title{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    font-size:18px;
+
+    font-weight:900;
+
+    margin-bottom:12px;
+
+}
+
+.upload-options{
+
     display:grid;
-    gap:14px;
+
+    grid-template-columns:
+        repeat(
+            2,
+            minmax(0,1fr)
+        );
+
+    gap:12px;
+
 }
 
-.upload-label{
-    display:block;
-    padding:18px;
+.upload-option{
+
+    position:relative;
+
+    min-height:125px;
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:center;
+
+    justify-content:center;
+
     text-align:center;
-    border-radius:18px;
-    background:linear-gradient(135deg,#6e2c8f,#40327c);
+
+    padding:18px 10px;
+
+    border-radius:19px;
+
     cursor:pointer;
-    font-weight:bold;
-    border:1px solid #ffffff20;
+
+    overflow:hidden;
+
+    transition:
+        transform .18s ease,
+        border-color .18s ease,
+        background .18s ease;
+
+    border:
+        1px solid
+        rgba(255,255,255,.1);
+
 }
 
-.upload-label:active{
-    transform:scale(.98);
+.upload-option:hover{
+
+    transform:translateY(-2px);
+
+    border-color:
+        rgba(255,255,255,.2);
+
 }
 
-input[type="file"]{
-    display:none;
+.upload-option:active{
+
+    transform:
+        scale(.97);
+
 }
 
-.file-info{
-    color:#aaa;
-    font-size:14px;
-    text-align:center;
-    word-break:break-word;
+.camera-option{
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(119,83,255,.2),
+            rgba(74,45,160,.08)
+        );
+
+}
+
+.album-option{
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(21,180,130,.17),
+            rgba(15,90,70,.07)
+        );
+
+}
+
+.upload-icon{
+
+    font-size:32px;
+
+    margin-bottom:8px;
+
+}
+
+.upload-main{
+
+    font-size:15px;
+
+    font-weight:900;
+
+}
+
+.upload-sub{
+
+    margin-top:5px;
+
+    color:#929db2;
+
+    font-size:11px;
+
+}
+
+.selected-count{
+
+    margin-top:8px;
+
+    color:#8c97ab;
+
+    font-size:12px;
+
+}
+
+
+/* =========================
+   MESSAGE
+========================= */
+
+.message-section{
+
+    margin-top:25px;
+
+}
+
+.message-title{
+
+    font-size:18px;
+
+    font-weight:900;
+
+    margin-bottom:10px;
+
 }
 
 textarea{
+
     width:100%;
-    min-height:300px;
+
+    min-height:150px;
+
     resize:vertical;
-    padding:20px;
-    border-radius:20px;
-    border:1px solid #ffffff20;
+
+    border-radius:17px;
+
+    border:
+        1px solid
+        rgba(255,255,255,.1);
+
+    background:
+        rgba(4,7,14,.72);
+
+    color:white;
+
     outline:none;
-    background:#090b18;
-    color:white;
-    font-family:Arial,sans-serif;
-    font-size:16px;
-    line-height:1.7;
+
+    padding:16px;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    font-size:14px;
+
+    line-height:1.6;
+
 }
 
-textarea::placeholder{
-    color:#777;
+textarea:focus{
+
+    border-color:
+        rgba(143,108,255,.6);
+
+    box-shadow:
+        0 0 0 3px
+        rgba(143,108,255,.08);
+
 }
 
-.counter{
-    margin-top:8px;
+.char-info{
+
     text-align:right;
-    color:#999;
-    font-size:13px;
+
+    color:#727d92;
+
+    font-size:11px;
+
+    margin-top:6px;
+
 }
 
-button{
+
+/* =========================
+   CREATE BUTTON
+========================= */
+
+.create-btn{
+
     width:100%;
-    padding:17px;
-    margin-top:15px;
-    border:0;
-    border-radius:18px;
-    cursor:pointer;
-    color:white;
-    font-size:16px;
-    font-weight:bold;
-    background:linear-gradient(90deg,#ff4fb8,#755cff);
-}
 
-button:active{
-    transform:scale(.98);
-}
-
-.status{
-    text-align:center;
-    margin-top:15px;
-    color:#9df5bd;
-    white-space:pre-wrap;
-    overflow-wrap:anywhere;
-}
-
-.qr-box{
-    display:none;
-    text-align:center;
     margin-top:25px;
-}
 
-.qr-box img{
-    width:240px;
-    max-width:100%;
-    border-radius:20px;
-    background:white;
-    padding:10px;
-}
+    padding:17px;
 
-.memory-link{
-    margin-top:15px;
-    padding:15px;
-    border-radius:15px;
-    background:#ffffff0d;
-    color:#bbb;
-    word-break:break-all;
-    text-align:left;
-}
-
-.action-row{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12px;
-    margin-top:12px;
-}
-
-.action-row button,
-.action-row a{
-    text-decoration:none;
-    text-align:center;
-    display:block;
-    padding:15px;
-    border-radius:16px;
-    color:white;
-    font-weight:bold;
     border:0;
+
+    border-radius:16px;
+
+    color:white;
+
+    font-size:16px;
+
+    font-weight:900;
+
     cursor:pointer;
+
+    background:
+        linear-gradient(
+            100deg,
+            #7656ff,
+            #a95eff
+        );
+
+    box-shadow:
+        0 12px 30px
+        rgba(120,80,255,.25);
+
+    transition:
+        transform .18s ease,
+        opacity .18s ease;
+
 }
 
-.copy-btn{
-    background:linear-gradient(90deg,#39456e,#514b91);
+.create-btn:hover{
+
+    transform:
+        translateY(-2px);
+
 }
 
-.download-btn{
-    background:linear-gradient(90deg,#e83c9f,#805cff);
+.create-btn:active{
+
+    transform:
+        scale(.98);
+
 }
 
-.open-btn{
-    background:linear-gradient(90deg,#ff4fb8,#755cff);
+.create-btn:disabled{
+
+    opacity:.6;
+
+    cursor:not-allowed;
+
 }
+
+
+/* =========================
+   RESULT
+========================= */
+
+.result{
+
+    display:none;
+
+    margin-top:25px;
+
+    padding-top:25px;
+
+    border-top:
+        1px solid
+        rgba(255,255,255,.08);
+
+}
+
+.result-card{
+
+    text-align:center;
+
+    padding:22px;
+
+    border-radius:22px;
+
+    background:
+        rgba(255,255,255,.045);
+
+    border:
+        1px solid
+        rgba(255,255,255,.08);
+
+}
+
+.success-icon{
+
+    font-size:42px;
+
+    margin-bottom:8px;
+
+}
+
+.result-title{
+
+    font-size:23px;
+
+    font-weight:900;
+
+}
+
+.result-sub{
+
+    color:#929db2;
+
+    font-size:13px;
+
+    margin-top:7px;
+
+}
+
+.qr-wrap{
+
+    margin:
+        22px auto;
+
+    width:230px;
+
+    max-width:100%;
+
+    padding:12px;
+
+    border-radius:18px;
+
+    background:white;
+
+    box-shadow:
+        0 15px 45px
+        rgba(0,0,0,.3);
+
+}
+
+.qr-wrap img{
+
+    display:block;
+
+    width:100%;
+
+    height:auto;
+
+}
+
+.memory-link-box{
+
+    padding:13px 15px;
+
+    border-radius:12px;
+
+    background:
+        rgba(0,0,0,.25);
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+
+    color:#aab4c7;
+
+    font-size:12px;
+
+    line-height:1.5;
+
+    word-break:break-all;
+
+}
+
+.result-actions{
+
+    display:grid;
+
+    grid-template-columns:
+        repeat(
+            2,
+            minmax(0,1fr)
+        );
+
+    gap:10px;
+
+    margin-top:14px;
+
+}
+
+.result-btn{
+
+    min-height:48px;
+
+    border:0;
+
+    border-radius:13px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    text-decoration:none;
+
+    font-size:13px;
+
+    font-weight:900;
+
+    cursor:pointer;
+
+}
+
+.open-memory-btn{
+
+    background:
+        linear-gradient(
+            135deg,
+            #7658ff,
+            #ad5cff
+        );
+
+    color:white;
+
+}
+
+.copy-link-btn{
+
+    background:
+        rgba(255,255,255,.08);
+
+    color:white;
+
+    border:
+        1px solid
+        rgba(255,255,255,.1);
+
+}
+
+
+/* =========================
+   FOOTER
+========================= */
 
 .footer{
+
     text-align:center;
-    color:#777;
-    margin-top:35px;
-    font-size:14px;
+
+    padding:
+        25px 15px 35px;
+
+    color:#717c91;
+
+    font-size:12px;
+
 }
+
+
+/* =========================
+   RESPONSIVE
+========================= */
 
 @media(max-width:600px){
 
-    h1{
-        font-size:36px;
+    .nav-inner{
+
+        height:60px;
+
+    }
+
+    .hero{
+
+        padding:
+            45px 0
+            30px;
+
+    }
+
+    .hero h1{
+
+        letter-spacing:-1.2px;
+
+    }
+
+    .hero p{
+
+        font-size:14px;
+
     }
 
     .card{
-        padding:20px;
+
+        border-radius:22px;
+
     }
 
-    .action-row{
-        grid-template-columns:1fr;
+    .upload-options{
+
+        grid-template-columns:
+            1fr 1fr;
+
     }
+
+    .upload-option{
+
+        min-height:115px;
+
+        padding:
+            14px 7px;
+
+    }
+
+    .upload-icon{
+
+        font-size:28px;
+
+    }
+
+    .upload-main{
+
+        font-size:13px;
+
+    }
+
+    .upload-sub{
+
+        font-size:10px;
+
+    }
+
+    .result-actions{
+
+        grid-template-columns:1fr;
+
+    }
+
+}
+
+
+/* =========================
+   SMALL POPUP
+========================= */
+
+.toast{
+
+    position:fixed;
+
+    left:50%;
+
+    bottom:25px;
+
+    transform:
+        translate(-50%,20px);
+
+    background:
+        rgba(20,24,35,.96);
+
+    border:
+        1px solid
+        rgba(255,255,255,.12);
+
+    color:white;
+
+    padding:
+        12px 17px;
+
+    border-radius:12px;
+
+    font-size:13px;
+
+    opacity:0;
+
+    pointer-events:none;
+
+    transition:.25s;
+
+    z-index:999;
+
+}
+
+.toast.show{
+
+    opacity:1;
+
+    transform:
+        translate(-50%,0);
 
 }
 
@@ -243,469 +928,664 @@ button:active{
 
 </head>
 
+
 <body>
 
-<div class="container">
 
-<div class="header">
+<!-- NAVBAR -->
+
+<nav class="navbar">
+
+<div class="nav-inner">
 
 <div class="logo">
-♥ MEMORY QR
+Memory <span>QR</span> ❤️
 </div>
-
-<h1>
-Your Memories, Forever.
-</h1>
-
-<div class="subtitle">
-Create a beautiful private memory with photos, videos and your personal diary.
-</div>
-
-</div>
-
-
-<!-- PHOTOS -->
-
-<div class="card">
-
-<h2>📸 Photos</h2>
-
-<div class="upload-box">
-
-<label class="upload-label">
-
-Select Photos
-
-<input
-    id="photoInput"
-    type="file"
-    accept="image/*"
-    multiple
-    onchange="showFiles('photoInput','photoInfo')">
-
-</label>
-
-<div
-    id="photoInfo"
-    class="file-info">
-
-No photos selected
-
-</div>
-
-</div>
-
-</div>
-
-
-<!-- VIDEOS -->
-
-<div class="card">
-
-<h2>🎥 Videos</h2>
-
-<div class="upload-box">
-
-<label class="upload-label">
-
-Select Videos
-
-<input
-    id="videoInput"
-    type="file"
-    accept="video/*"
-    multiple
-    onchange="showFiles('videoInput','videoInfo')">
-
-</label>
-
-<div
-    id="videoInfo"
-    class="file-info">
-
-No videos selected
-
-</div>
-
-</div>
-
-</div>
-
-
-<!-- DIARY -->
-
-<div class="card">
-
-<h2>💌 Personal Diary</h2>
-
-<textarea
-    id="diary"
-    maxlength="70000"
-    placeholder="Write your memories, story, message or diary here...
-
-You can write multiple paragraphs.
-
-Line breaks will remain exactly like you type them.
-
-You can write up to 70,000 characters."></textarea>
-
-<div
-    id="counter"
-    class="counter">
-
-0 characters
-
-</div>
-
-<button
-    type="button"
-    onclick="saveDiary()">
-
-💌 Save Personal Diary
-
-</button>
-
-</div>
-
-
-<!-- CREATE MEMORY -->
-
-<div class="card">
-
-<h2>✨ Create Memory QR</h2>
-
-<button
-    type="button"
-    onclick="createMemory()">
-
-✨ Create My Memory
-
-</button>
-
-<div
-    id="status"
-    class="status">
-</div>
-
-
-<!-- QR RESULT -->
-
-<div
-    id="qrBox"
-    class="qr-box">
-
-<h2>
-Your Memory QR
-</h2>
-
-<img
-    id="qrImage"
-    src=""
-    alt="Memory QR">
-
-<div
-    id="memoryLink"
-    class="memory-link">
-</div>
-
-
-<div class="action-row">
-
-<button
-    class="copy-btn"
-    type="button"
-    onclick="copyMemoryLink()">
-
-📋 Copy Link
-
-</button>
 
 <a
-    id="downloadQR"
-    class="download-btn"
-    href="#">
-
-⬇️ Download QR
-
+    href="#create"
+    class="nav-link"
+>
+Create Memory
 </a>
 
 </div>
 
+</nav>
+
+
+<!-- HERO -->
+
+<section class="hero">
+
+<div class="hero-badge">
+✨ Preserve Your Special Moments
+</div>
+
+<h1>
+Your Memories.<br>
+<span>One Beautiful QR.</span>
+</h1>
+
+<p>
+Create a personal memory page with your photos,
+videos and message. Generate one QR code and
+share your memories whenever you want.
+</p>
+
+</section>
+
+
+<!-- MAIN -->
+
+<main
+    class="main"
+    id="create"
+>
+
+<div class="card">
+
+<div class="card-title">
+Create Your Memory ❤️
+</div>
+
+<div class="card-subtitle">
+Add as many photos and videos as you want,
+then write a personal message. Your QR code
+will be generated automatically.
+</div>
+
+
+<!-- =========================
+     PHOTOS
+========================= -->
+
+<div class="upload-section">
+
+<div class="upload-title">
+📸 Photos
+</div>
+
+<div class="upload-options">
+
+
+<!-- CAMERA -->
+
+<label
+    class="upload-option camera-option"
+    for="photoCamera"
+>
+
+<div class="upload-icon">
+📷
+</div>
+
+<div class="upload-main">
+Camera
+</div>
+
+<div class="upload-sub">
+Take Photo
+</div>
+
+<input
+    type="file"
+    id="photoCamera"
+    accept="image/*"
+    capture="environment"
+    hidden
+>
+
+</label>
+
+
+<!-- ALBUM -->
+
+<label
+    class="upload-option album-option"
+    for="photos"
+>
+
+<div class="upload-icon">
+🖼️
+</div>
+
+<div class="upload-main">
+Choose from Album
+</div>
+
+<div class="upload-sub">
+Select Multiple Photos
+</div>
+
+<input
+    type="file"
+    id="photos"
+    accept="image/*"
+    multiple
+    hidden
+>
+
+</label>
+
+</div>
+
+<div
+    id="photoCount"
+    class="selected-count"
+>
+No photos selected
+</div>
+
+</div>
+
+
+<!-- =========================
+     VIDEOS
+========================= -->
+
+<div class="upload-section">
+
+<div class="upload-title">
+🎥 Videos
+</div>
+
+<div class="upload-options">
+
+
+<!-- VIDEO CAMERA -->
+
+<label
+    class="upload-option camera-option"
+    for="videoCamera"
+>
+
+<div class="upload-icon">
+🎥
+</div>
+
+<div class="upload-main">
+Camera
+</div>
+
+<div class="upload-sub">
+Record Video
+</div>
+
+<input
+    type="file"
+    id="videoCamera"
+    accept="video/*"
+    capture="environment"
+    hidden
+>
+
+</label>
+
+
+<!-- VIDEO ALBUM -->
+
+<label
+    class="upload-option album-option"
+    for="videos"
+>
+
+<div class="upload-icon">
+🎬
+</div>
+
+<div class="upload-main">
+Choose from Album
+</div>
+
+<div class="upload-sub">
+Select Multiple Videos
+</div>
+
+<input
+    type="file"
+    id="videos"
+    accept="video/*"
+    multiple
+    hidden
+>
+
+</label>
+
+</div>
+
+<div
+    id="videoCount"
+    class="selected-count"
+>
+No videos selected
+</div>
+
+</div>
+
+
+<!-- =========================
+     MESSAGE
+========================= -->
+
+<div class="message-section">
+
+<div class="message-title">
+💌 Your Message
+</div>
+
+<textarea
+    id="message"
+    maxlength="70000"
+    placeholder="Write a special message for this memory..."
+></textarea>
+
+<div
+    id="charInfo"
+    class="char-info"
+>
+0 / 70000
+</div>
+
+</div>
+
+
+<!-- CREATE -->
 
 <button
-    class="open-btn"
+    id="createMemoryBtn"
+    class="create-btn"
     type="button"
-    onclick="openMemory()">
+    onclick="createMemory()"
+>
+✨ Create My Memory QR
+</button>
 
-❤️ Open My Memory
 
+<!-- =========================
+     RESULT
+========================= -->
+
+<div
+    id="result"
+    class="result"
+>
+
+<div class="result-card">
+
+<div class="success-icon">
+🎉
+</div>
+
+<div class="result-title">
+Your Memory QR is Ready!
+</div>
+
+<div class="result-sub">
+Scan the QR or open the direct memory link.
+</div>
+
+
+<div class="qr-wrap">
+
+<img
+    id="qrImage"
+    src=""
+    alt="Memory QR Code"
+>
+
+</div>
+
+
+<div
+    id="memoryLink"
+    class="memory-link-box"
+>
+</div>
+
+
+<div class="result-actions">
+
+<a
+    id="openMemoryBtn"
+    class="result-btn open-memory-btn"
+    href="#"
+    target="_blank"
+    rel="noopener"
+>
+🔗 Open My Memory
+</a>
+
+
+<button
+    type="button"
+    class="result-btn copy-link-btn"
+    onclick="copyMemoryLink()"
+>
+📋 Copy Memory Link
 </button>
 
 </div>
 
 </div>
 
-
-<div class="footer">
-This site is made by Aquib Khan ❤️
 </div>
 
+
+</div>
+
+</main>
+
+
+<!-- FOOTER -->
+
+<footer class="footer">
+
+This site is made by Aquib Khan ❤️
+
+</footer>
+
+
+<div
+    id="toast"
+    class="toast"
+>
+Copied ❤️
 </div>
 
 
 <script>
 
-let memoryId =
-    localStorage.getItem(
-        "memoryqr_memory_id"
-    ) || "";
+/* =====================================
+   FILE STORAGE
+===================================== */
+
+let cameraPhotoFiles = [];
+
+let cameraVideoFiles = [];
 
 
-function showFiles(
-    inputId,
-    infoId
-){
+/* =====================================
+   INPUTS
+===================================== */
 
-    const input =
-        document.getElementById(
-            inputId
+const photoInput =
+    document.getElementById("photos");
+
+const videoInput =
+    document.getElementById("videos");
+
+const photoCamera =
+    document.getElementById("photoCamera");
+
+const videoCamera =
+    document.getElementById("videoCamera");
+
+const photoCount =
+    document.getElementById("photoCount");
+
+const videoCount =
+    document.getElementById("videoCount");
+
+
+/* =====================================
+   UPDATE COUNTS
+===================================== */
+
+function updateCounts(){
+
+    const galleryPhotos =
+        Array.from(
+            photoInput.files || []
         );
 
-    const info =
-        document.getElementById(
-            infoId
-        );
+    const totalPhotos =
+        galleryPhotos.length +
+        cameraPhotoFiles.length;
 
-    const files =
-        Array.from(input.files);
 
-    if(files.length === 0){
+    if(totalPhotos === 0){
 
-        info.textContent =
-            "No files selected";
+        photoCount.textContent =
+            "No photos selected";
 
-        return;
+    }else{
+
+        photoCount.textContent =
+            totalPhotos +
+            " photo" +
+            (
+                totalPhotos === 1
+                ? ""
+                : "s"
+            ) +
+            " selected";
+
     }
 
-    info.textContent =
-        files.length +
-        " file(s) selected";
+
+    const galleryVideos =
+        Array.from(
+            videoInput.files || []
+        );
+
+    const totalVideos =
+        galleryVideos.length +
+        cameraVideoFiles.length;
+
+
+    if(totalVideos === 0){
+
+        videoCount.textContent =
+            "No videos selected";
+
+    }else{
+
+        videoCount.textContent =
+            totalVideos +
+            " video" +
+            (
+                totalVideos === 1
+                ? ""
+                : "s"
+            ) +
+            " selected";
+
+    }
+
 }
 
 
-const diary =
-    document.getElementById(
-        "diary"
-    );
+/* =====================================
+   ALBUM CHANGE
+===================================== */
 
-const counter =
-    document.getElementById(
-        "counter"
-    );
-
-
-diary.addEventListener(
-    "input",
+photoInput.addEventListener(
+    "change",
     function(){
 
-        counter.textContent =
-            diary.value.length +
-            " characters";
+        updateCounts();
 
     }
 );
 
 
-async function createMemory(){
+videoInput.addEventListener(
+    "change",
+    function(){
 
-    const status =
-        document.getElementById(
-            "status"
-        );
+        updateCounts();
 
-    status.textContent =
-        "Creating your memory...";
-
-    try{
-
-        const response =
-            await fetch(
-                "/create-memory",
-                {
-                    method:"POST"
-                }
-            );
-
-        const data =
-            await response.json();
-
-        if(!data.success){
-
-            status.textContent =
-                data.error ||
-                "Could not create memory.";
-
-            return;
-        }
+    }
+);
 
 
-        memoryId =
-            String(
-                data.memory_id
-            );
+/* =====================================
+   CAMERA PHOTO
+===================================== */
 
-        localStorage.setItem(
-            "memoryqr_memory_id",
-            memoryId
-        );
+photoCamera.addEventListener(
+    "change",
+    function(){
 
+        if(this.files){
 
-        const photoInput =
-            document.getElementById(
-                "photoInput"
-            );
-
-
-        if(
-            photoInput.files.length > 0
-        ){
-
-            await uploadFiles(
-                photoInput.files,
-                memoryId
-            );
-
-        }
-
-
-        const videoInput =
-            document.getElementById(
-                "videoInput"
-            );
-
-
-        if(
-            videoInput.files.length > 0
-        ){
-
-            await uploadFiles(
-                videoInput.files,
-                memoryId
-            );
-
-        }
-
-
-        const diaryText =
-            diary.value;
-
-
-        if(
-            diaryText.trim().length > 0
-        ){
-
-            const diaryResponse =
-                await fetch(
-                    "/save-message",
-                    {
-                        method:"POST",
-
-                        headers:{
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body:JSON.stringify({
-
-                            memory_id:
-                                memoryId,
-
-                            message:
-                                diaryText
-
-                        })
-                    }
-                );
-
-
-            const diaryData =
-                await diaryResponse.json();
-
-
-            if(
-                !diaryData.success
+            for(
+                const file of this.files
             ){
 
-                status.textContent =
-                    "Diary save error: " +
-                    (
-                        diaryData.error ||
-                        "Unknown error"
+                if(
+                    file.type.startsWith(
+                        "image/"
+                    )
+                ){
+
+                    cameraPhotoFiles.push(
+                        file
                     );
 
-                return;
+                }
+
             }
 
         }
 
 
-        showQR(
-            data.qr,
-            data.memory_url,
-            memoryId
+        /*
+         * Clear the input so the
+         * camera can be opened again.
+         */
+
+        this.value = "";
+
+        updateCounts();
+
+    }
+);
+
+
+/* =====================================
+   CAMERA VIDEO
+===================================== */
+
+videoCamera.addEventListener(
+    "change",
+    function(){
+
+        if(this.files){
+
+            for(
+                const file of this.files
+            ){
+
+                if(
+                    file.type.startsWith(
+                        "video/"
+                    )
+                ){
+
+                    cameraVideoFiles.push(
+                        file
+                    );
+
+                }
+
+            }
+
+        }
+
+
+        /*
+         * Clear input so camera
+         * can be opened again.
+         */
+
+        this.value = "";
+
+        updateCounts();
+
+    }
+);
+
+
+/* =====================================
+   MESSAGE COUNTER
+===================================== */
+
+const messageBox =
+    document.getElementById(
+        "message"
+    );
+
+const charInfo =
+    document.getElementById(
+        "charInfo"
+    );
+
+
+messageBox.addEventListener(
+    "input",
+    function(){
+
+        charInfo.textContent =
+            this.value.length +
+            " / 70000";
+
+    }
+);
+
+
+/* =====================================
+   TOAST
+===================================== */
+
+function showToast(text){
+
+    const toast =
+        document.getElementById(
+            "toast"
         );
 
+    toast.textContent =
+        text;
 
-        status.textContent =
-            "✅ Memory created successfully!";
+    toast.classList.add(
+        "show"
+    );
 
 
-    }catch(error){
+    setTimeout(
+        function(){
 
-        status.textContent =
-            "Error: " +
-            error.message;
+            toast.classList.remove(
+                "show"
+            );
+
+        },
+        1800
+    );
+
+}
+
+
+/* =====================================
+   UPLOAD FILES
+===================================== */
+
+async function uploadFiles(
+    memoryId,
+    files
+){
+
+    if(
+        !files ||
+        files.length === 0
+    ){
+
+        return;
 
     }
 
-}
-
-
-function showQR(
-    qr,
-    link,
-    id
-){
-
-    document.getElementById(
-        "qrImage"
-    ).src = qr;
-
-
-    document.getElementById(
-        "memoryLink"
-    ).textContent = link;
-
-
-    document.getElementById(
-        "downloadQR"
-    ).href =
-        "/download-qr/" +
-        encodeURIComponent(id);
-
-
-    document.getElementById(
-        "qrBox"
-    ).style.display =
-        "block";
-
-}
-
-
-async function uploadFiles(
-    files,
-    id
-){
 
     const formData =
         new FormData();
@@ -713,7 +1593,7 @@ async function uploadFiles(
 
     formData.append(
         "memory_id",
-        id
+        memoryId
     );
 
 
@@ -739,182 +1619,393 @@ async function uploadFiles(
         );
 
 
-    const data =
-        await response.json();
-
-
-    if(!data.success){
-
-        throw new Error(
-            data.error ||
-            "Upload failed"
-        );
-
-    }
-
-
-    return data;
-
-}
-
-
-async function saveDiary(){
-
-    const status =
-        document.getElementById(
-            "status"
-        );
-
-    const text =
-        diary.value;
-
-
-    if(!text.trim()){
-
-        status.textContent =
-            "Please write something first.";
-
-        return;
-
-    }
-
-
-    if(!memoryId){
-
-        status.textContent =
-            "Creating memory...";
-
-
-        try{
-
-            const response =
-                await fetch(
-                    "/create-memory",
-                    {
-                        method:"POST"
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            if(!data.success){
-
-                status.textContent =
-                    data.error ||
-                    "Memory creation failed.";
-
-                return;
-
-            }
-
-
-            memoryId =
-                String(
-                    data.memory_id
-                );
-
-
-            localStorage.setItem(
-                "memoryqr_memory_id",
-                memoryId
-            );
-
-
-            showQR(
-                data.qr,
-                data.memory_url,
-                memoryId
-            );
-
-
-        }catch(error){
-
-            status.textContent =
-                error.message;
-
-            return;
-
-        }
-
-    }
-
-
-    status.textContent =
-        "Saving diary...";
+    let data;
 
 
     try{
 
-        const response =
-            await fetch(
-                "/save-message",
-                {
-                    method:"POST",
-
-                    headers:{
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:JSON.stringify({
-
-                        memory_id:
-                            memoryId,
-
-                        message:
-                            text
-
-                    })
-                }
-            );
-
-
-        const data =
+        data =
             await response.json();
 
+    }catch{
 
-        if(!data.success){
+        throw new Error(
+            "Server upload response was invalid."
+        );
 
-            status.textContent =
-                "❌ " +
-                (
-                    data.error ||
-                    "Diary could not be saved."
-                );
-
-            return;
-
-        }
+    }
 
 
-        status.textContent =
-            "✅ Diary saved successfully.";
+    if(
+        !response.ok ||
+        !data.success
+    ){
 
-
-    }catch(error){
-
-        status.textContent =
-            "❌ " +
-            error.message;
+        throw new Error(
+            data.error ||
+            "File upload failed."
+        );
 
     }
 
 }
 
 
+/* =====================================
+   CREATE MEMORY
+===================================== */
+
+async function createMemory(){
+
+    const button =
+        document.getElementById(
+            "createMemoryBtn"
+        );
+
+
+    button.disabled =
+        true;
+
+    button.textContent =
+        "Creating Your Memory...";
+
+
+    try{
+
+        /*
+         * STEP 1
+         * Create memory ID
+         */
+
+        const createResponse =
+            await fetch(
+                "/create-memory",
+                {
+                    method:"POST"
+                }
+            );
+
+
+        let createData;
+
+
+        try{
+
+            createData =
+                await createResponse.json();
+
+        }catch{
+
+            throw new Error(
+                "Could not read server response."
+            );
+
+        }
+
+
+        if(
+            !createResponse.ok ||
+            !createData.success
+        ){
+
+            throw new Error(
+                createData.error ||
+                "Could not create memory."
+            );
+
+        }
+
+
+        const memoryId =
+            createData.memory_id;
+
+
+        localStorage.setItem(
+            "memory_id",
+            memoryId
+        );
+
+
+        /*
+         * STEP 2
+         * Collect gallery files
+         */
+
+        const galleryPhotos =
+            Array.from(
+                photoInput.files || []
+            );
+
+
+        const galleryVideos =
+            Array.from(
+                videoInput.files || []
+            );
+
+
+        /*
+         * STEP 3
+         * Combine camera + gallery
+         */
+
+        const allPhotos =
+            galleryPhotos.concat(
+                cameraPhotoFiles
+            );
+
+
+        const allVideos =
+            galleryVideos.concat(
+                cameraVideoFiles
+            );
+
+
+        /*
+         * STEP 4
+         * Upload photos
+         */
+
+        button.textContent =
+            "Uploading Photos...";
+
+
+        await uploadFiles(
+            memoryId,
+            allPhotos
+        );
+
+
+        /*
+         * STEP 5
+         * Upload videos
+         */
+
+        button.textContent =
+            "Uploading Videos...";
+
+
+        await uploadFiles(
+            memoryId,
+            allVideos
+        );
+
+
+        /*
+         * STEP 6
+         * Save message
+         */
+
+        const message =
+            messageBox.value.trim();
+
+
+        if(message){
+
+            button.textContent =
+                "Saving Message...";
+
+
+            const messageResponse =
+                await fetch(
+                    "/save-message",
+                    {
+                        method:"POST",
+
+                        headers:{
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body:
+                            JSON.stringify({
+                                memory_id:
+                                    memoryId,
+
+                                message:
+                                    message
+                            })
+                    }
+                );
+
+
+            let messageData;
+
+
+            try{
+
+                messageData =
+                    await messageResponse.json();
+
+            }catch{
+
+                throw new Error(
+                    "Message save response was invalid."
+                );
+
+            }
+
+
+            if(
+                !messageResponse.ok ||
+                !messageData.success
+            ){
+
+                throw new Error(
+                    messageData.error ||
+                    "Could not save message."
+                );
+
+            }
+
+        }
+
+
+        /*
+         * STEP 7
+         * Show QR
+         */
+
+        const qrImage =
+            document.getElementById(
+                "qrImage"
+            );
+
+
+        qrImage.src =
+            createData.qr;
+
+
+        /*
+         * STEP 8
+         * Show memory URL
+         */
+
+        const memoryLink =
+            createData.memory_url;
+
+
+        const linkBox =
+            document.getElementById(
+                "memoryLink"
+            );
+
+
+        linkBox.textContent =
+            memoryLink;
+
+
+        /*
+         * STEP 9
+         * Open button
+         */
+
+        const openButton =
+            document.getElementById(
+                "openMemoryBtn"
+            );
+
+
+        openButton.href =
+            memoryLink;
+
+
+        /*
+         * STEP 10
+         * Show result
+         */
+
+        const result =
+            document.getElementById(
+                "result"
+            );
+
+
+        result.style.display =
+            "block";
+
+
+        /*
+         * STEP 11
+         * Clear camera arrays
+         */
+
+        cameraPhotoFiles = [];
+
+        cameraVideoFiles = [];
+
+
+        updateCounts();
+
+
+        button.disabled =
+            false;
+
+        button.textContent =
+            "✨ Create Another Memory QR";
+
+
+        /*
+         * Scroll to result
+         */
+
+        setTimeout(
+            function(){
+
+                result.scrollIntoView({
+                    behavior:"smooth",
+                    block:"center"
+                });
+
+            },
+            150
+        );
+
+
+    }catch(error){
+
+        console.error(
+            "Memory QR Error:",
+            error
+        );
+
+
+        alert(
+            "Something went wrong:\n\n" +
+            error.message
+        );
+
+
+        button.disabled =
+            false;
+
+        button.textContent =
+            "✨ Create My Memory QR";
+
+    }
+
+}
+
+
+/* =====================================
+   COPY MEMORY LINK
+===================================== */
+
 async function copyMemoryLink(){
 
-    const link =
+    const linkBox =
         document.getElementById(
             "memoryLink"
-        ).textContent;
+        );
+
+
+    const link =
+        linkBox.textContent.trim();
 
 
     if(!link){
+
         return;
+
     }
 
 
@@ -924,22 +2015,39 @@ async function copyMemoryLink(){
             link
         );
 
-
-        const status =
-            document.getElementById(
-                "status"
-            );
-
-
-        status.textContent =
-            "✅ Memory link copied!";
+        showToast(
+            "Memory link copied ❤️"
+        );
 
 
     }catch(error){
 
-        prompt(
-            "Copy your memory link:",
-            link
+        /*
+         * Fallback
+         */
+
+        const temp =
+            document.createElement(
+                "textarea"
+            );
+
+        temp.value =
+            link;
+
+        document.body.appendChild(
+            temp
+        );
+
+        temp.select();
+
+        document.execCommand(
+            "copy"
+        );
+
+        temp.remove();
+
+        showToast(
+            "Memory link copied ❤️"
         );
 
     }
@@ -947,24 +2055,14 @@ async function copyMemoryLink(){
 }
 
 
-function openMemory(){
+/* =====================================
+   INITIAL
+===================================== */
 
-    if(!memoryId){
-
-        return;
-
-    }
-
-
-    window.location.href =
-        "/memory/" +
-        encodeURIComponent(
-            memoryId
-        );
-
-}
+updateCounts();
 
 </script>
+
 
 </body>
 
