@@ -10,20 +10,36 @@ from flask import (
 )
 
 import os
-import qrcode
-import uuid
 import json
+import uuid
 import shutil
+import qrcode
 
 from werkzeug.utils import secure_filename
 from markupsafe import escape
 
+try:
+    from analytics import init_db, track_request, get_stats
+except Exception:
+    def init_db():
+        pass
+
+    def track_request(req):
+        pass
+
+    def get_stats():
+        return {
+            "total_visits": 0,
+            "today_visits": 0,
+            "seven_day_visits": 0,
+            "memory_views": 0,
+            "most_viewed": None,
+            "devices": [],
+            "browsers": []
+        }
+
 
 app = Flask(__name__)
-
-# ==============================
-# SECURITY / ADMIN SETTINGS
-# ==============================
 
 app.secret_key = os.environ.get(
     "SECRET_KEY",
@@ -40,21 +56,29 @@ ADMIN_PASSWORD = os.environ.get(
     "MemoryQR@123"
 )
 
-
-# ==============================
-# FOLDERS
-# ==============================
-
 UPLOAD_FOLDER = "memories"
 QR_FOLDER = "static/qr"
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(QR_FOLDER, exist_ok=True)
+os.makedirs(
+    UPLOAD_FOLDER,
+    exist_ok=True
+)
+
+os.makedirs(
+    QR_FOLDER,
+    exist_ok=True
+)
+
+init_db()
 
 
-# ==============================
-# MEMORY HELPERS
-# ==============================
+@app.before_request
+def analytics_middleware():
+    try:
+        track_request(request)
+    except Exception:
+        pass
+
 
 def get_memory_folder(memory_id):
     return os.path.join(
@@ -70,9 +94,35 @@ def get_message_file(memory_id):
     )
 
 
-# ==============================
+def admin_required():
+    return session.get(
+        "admin_logged_in"
+    ) is True
+
+
+def allowed_file(filename):
+
+    allowed = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".mp4",
+        ".webm",
+        ".mov",
+        ".m4v",
+        ".mkv"
+    }
+
+    return os.path.splitext(
+        filename.lower()
+    )[1] in allowed
+
+
+# -------------------------------------------------
 # HOME
-# ==============================
+# -------------------------------------------------
 
 @app.route("/")
 def home():
@@ -83,9 +133,9 @@ def home():
     )
 
 
-# ==============================
+# -------------------------------------------------
 # CREATE MEMORY
-# ==============================
+# -------------------------------------------------
 
 @app.route(
     "/create-memory",
@@ -93,170 +143,174 @@ def home():
 )
 def create_memory():
 
-    memory_id = str(
-        uuid.uuid4()
-    )[:8]
+    memory_id = uuid.uuid4().hex[:12]
 
-    memory_folder = get_memory_folder(
+    folder = get_memory_folder(
         memory_id
     )
 
     os.makedirs(
-        memory_folder,
+        folder,
         exist_ok=True
     )
 
-    base_url = request.host_url.rstrip("/")
-
-    qr_url = (
-        f"{base_url}/memory/{memory_id}"
+    memory_url = (
+        request.host_url.rstrip("/")
+        + "/memory/"
+        + memory_id
     )
-
-    qr = qrcode.make(qr_url)
 
     qr_path = os.path.join(
         QR_FOLDER,
-        f"{memory_id}.png"
+        memory_id + ".png"
     )
 
-    qr.save(qr_path)
+    qrcode.make(
+        memory_url
+    ).save(
+        qr_path
+    )
 
     return jsonify({
         "success": True,
         "memory_id": memory_id,
-        "qr": f"/static/qr/{memory_id}.png",
-        "memory_url": qr_url
+        "memory_url": memory_url,
+        "qr": url_for(
+            "static",
+            filename="qr/" + memory_id + ".png"
+        ),
+        "qr_url": url_for(
+            "static",
+            filename="qr/" + memory_id + ".png"
+        )
     })
 
 
-# ==============================
-# UPLOAD
-# ==============================
+# -------------------------------------------------
+# UPLOAD MULTIPLE FILES
+# -------------------------------------------------
 
 @app.route(
     "/upload",
     methods=["POST"]
 )
-def upload():
+def upload_files():
 
     memory_id = request.form.get(
-        "memory_id"
-    )
+        "memory_id",
+        ""
+    ).strip()
 
     if not memory_id:
 
         return jsonify({
             "success": False,
-            "error": "Memory ID missing"
+            "error": "Memory ID is required"
         }), 400
 
-
-    memory_folder = get_memory_folder(
+    folder = get_memory_folder(
         memory_id
     )
 
-
-    if not os.path.exists(
-        memory_folder
-    ):
+    if not os.path.isdir(folder):
 
         return jsonify({
             "success": False,
             "error": "Memory not found"
         }), 404
 
+    # Support both:
+    # files
+    # and file
 
     files = request.files.getlist(
-        "file"
+        "files"
     )
-
 
     if not files:
 
         files = request.files.getlist(
-            "files"
+            "file"
         )
 
-
-    if not files:
-
-        return jsonify({
-            "success": False,
-            "error": "No file received"
-        }), 400
-
-
-    saved = []
-
+    uploaded = []
+    rejected = []
 
     for file in files:
 
-        if not file or not file.filename:
+        if not file:
             continue
 
+        if not file.filename:
+            continue
+
+        original_name = file.filename
+
+        if not allowed_file(
+            original_name
+        ):
+
+            rejected.append(
+                original_name
+            )
+
+            continue
 
         filename = secure_filename(
-            file.filename
+            original_name
         )
-
 
         if not filename:
             continue
 
-
-        original_name = filename
-
-
-        name, ext = os.path.splitext(
-            original_name
+        base, ext = os.path.splitext(
+            filename
         )
 
-
+        final_name = filename
         counter = 1
-
 
         while os.path.exists(
             os.path.join(
-                memory_folder,
-                filename
+                folder,
+                final_name
             )
         ):
 
-            filename = (
-                f"{name}_{counter}{ext}"
+            final_name = (
+                base
+                + "_"
+                + str(counter)
+                + ext
             )
 
             counter += 1
 
-
-        file.save(
-            os.path.join(
-                memory_folder,
-                filename
-            )
+        save_path = os.path.join(
+            folder,
+            final_name
         )
 
+        file.save(
+            save_path
+        )
 
-        saved.append(filename)
-
-
-    if not saved:
-
-        return jsonify({
-            "success": False,
-            "error": "File could not be saved"
-        }), 400
-
+        uploaded.append(
+            final_name
+        )
 
     return jsonify({
         "success": True,
-        "files": saved
+        "uploaded": uploaded,
+        "files": uploaded,
+        "rejected": rejected,
+        "count": len(uploaded)
     })
 
 
-# ==============================
+# -------------------------------------------------
 # SAVE MESSAGE
-# ==============================
+# -------------------------------------------------
 
 @app.route(
     "/save-message",
@@ -268,43 +322,44 @@ def save_message():
         silent=True
     ) or {}
 
+    memory_id = str(
+        data.get(
+            "memory_id",
+            ""
+        )
+    ).strip()
 
-    memory_id = data.get(
-        "memory_id"
+    message = str(
+        data.get(
+            "message",
+            ""
+        )
     )
-
-
-    message = data.get(
-        "message",
-        ""
-    )
-
 
     if not memory_id:
 
         return jsonify({
             "success": False,
-            "error": "Memory ID missing"
+            "error": "Memory ID is required"
         }), 400
 
-
-    memory_folder = get_memory_folder(
+    folder = get_memory_folder(
         memory_id
     )
 
-
-    if not os.path.exists(
-        memory_folder
-    ):
+    if not os.path.isdir(folder):
 
         return jsonify({
             "success": False,
             "error": "Memory not found"
         }), 404
 
+    if len(message) > 70000:
 
-    message = str(message)[:10000]
-
+        return jsonify({
+            "success": False,
+            "error": "Message is too long"
+        }), 400
 
     with open(
         get_message_file(memory_id),
@@ -321,16 +376,40 @@ def save_message():
             indent=2
         )
 
-
     return jsonify({
-        "success": True,
-        "characters": len(message)
+        "success": True
     })
 
 
-# ==============================
+# -------------------------------------------------
+# DOWNLOAD QR
+# -------------------------------------------------
+
+@app.route(
+    "/download-qr/<memory_id>"
+)
+def download_qr(memory_id):
+
+    qr_file = os.path.join(
+        QR_FOLDER,
+        memory_id + ".png"
+    )
+
+    if not os.path.isfile(qr_file):
+
+        return "QR not found", 404
+
+    return send_from_directory(
+        QR_FOLDER,
+        memory_id + ".png",
+        as_attachment=True,
+        download_name="MemoryQR-" + memory_id + ".png"
+    )
+
+
+# -------------------------------------------------
 # MEMORY FILE
-# ==============================
+# -------------------------------------------------
 
 @app.route(
     "/memories/<memory_id>/<path:filename>"
@@ -344,11 +423,9 @@ def memory_file(
         memory_id
     )
 
-
-    if not os.path.exists(folder):
+    if not os.path.isdir(folder):
 
         return "Memory not found", 404
-
 
     return send_from_directory(
         folder,
@@ -356,73 +433,92 @@ def memory_file(
     )
 
 
-# ==============================
-# MEMORY PAGE
-# ==============================
+# -------------------------------------------------
+# PUBLIC MEMORY PAGE
+# -------------------------------------------------
 
 @app.route(
     "/memory/<memory_id>"
 )
-def memory_page(
-    memory_id
-):
+def memory_page(memory_id):
 
     folder = get_memory_folder(
         memory_id
     )
 
+    if not os.path.isdir(folder):
 
-    if not os.path.exists(folder):
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport"
+        content="width=device-width,initial-scale=1">
+        <title>Memory Not Found</title>
+        </head>
 
-        return "Memory not found", 404
+        <body style="
+        margin:0;
+        background:#080912;
+        color:white;
+        font-family:Arial;
+        text-align:center;
+        padding-top:100px;
+        ">
 
+        <h2>Memory not found</h2>
 
-    files = os.listdir(folder)
+        <p style="color:#999">
+        This Memory QR may no longer exist.
+        </p>
 
+        </body>
+        </html>
+        """, 404
 
     photos = []
     videos = []
 
+    for filename in sorted(
+        os.listdir(folder)
+    ):
 
-    for filename in files:
+        if filename == "message.json":
+            continue
 
-        lower = filename.lower()
+        ext = os.path.splitext(
+            filename
+        )[1].lower()
 
+        if ext in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif"
+        }:
 
-        if lower.endswith(
-            (
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".webp",
-                ".gif"
+            photos.append(
+                filename
             )
-        ):
 
-            photos.append(filename)
+        elif ext in {
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".m4v",
+            ".mkv"
+        }:
 
-
-        elif lower.endswith(
-            (
-                ".mp4",
-                ".webm",
-                ".mov",
-                ".mkv",
-                ".avi",
-                ".m4v"
+            videos.append(
+                filename
             )
-        ):
-
-            videos.append(filename)
-
 
     message = ""
-
 
     message_file = get_message_file(
         memory_id
     )
-
 
     if os.path.exists(
         message_file
@@ -438,44 +534,54 @@ def memory_page(
 
                 data = json.load(f)
 
-                message = data.get(
-                    "message",
-                    ""
-                )
+            message = data.get(
+                "message",
+                ""
+            )
 
         except Exception:
 
             message = ""
 
-
     photo_html = ""
-
 
     for filename in photos:
 
-        safe_filename = escape(
-            filename
+        file_url = (
+            "/memories/"
+            + memory_id
+            + "/"
+            + filename
         )
-
 
         photo_html += f"""
         <div class="photo">
             <img
-                src="/memories/{memory_id}/{safe_filename}"
+                src="{escape(file_url)}"
+                loading="lazy"
+                onclick="openPhoto(this.src)"
                 alt="Memory Photo">
         </div>
         """
 
+    if not photo_html:
+
+        photo_html = """
+        <div class="empty">
+            📸 No photos added yet.
+        </div>
+        """
 
     video_html = ""
 
-
     for filename in videos:
 
-        safe_filename = escape(
-            filename
+        file_url = (
+            "/memories/"
+            + memory_id
+            + "/"
+            + filename
         )
-
 
         video_html += f"""
         <video
@@ -484,274 +590,227 @@ def memory_page(
             preload="metadata">
 
             <source
-                src="/memories/{memory_id}/{safe_filename}">
+                src="{escape(file_url)}">
 
         </video>
         """
 
-
-    if not photo_html:
-
-        photo_html = """
-        <p class="empty">
-            No photos added yet.
-        </p>
-        """
-
-
     if not video_html:
 
         video_html = """
-        <p class="empty">
-            No video added yet.
-        </p>
+        <div class="empty">
+            🎥 No videos added yet.
+        </div>
         """
-
-
-    if not message:
-
-        message = (
-            "Your special message "
-            "will appear here."
-        )
-
 
     safe_message = escape(
         message
     )
 
-
-    return f"""
+    return render_template_string(
+        """
 <!DOCTYPE html>
 
-<html lang="en">
+<html>
 
 <head>
 
 <meta charset="UTF-8">
 
 <meta
-    name="viewport"
-    content="width=device-width,initial-scale=1.0">
+name="viewport"
+content="width=device-width,initial-scale=1">
 
-<title>
-Your Memory • Memory QR
-</title>
+<meta
+name="robots"
+content="noindex,nofollow,noarchive">
+
+<title>Memory QR</title>
 
 <style>
 
-* {{
-    box-sizing: border-box;
-}}
+*{
+    box-sizing:border-box;
+}
 
-body {{
-
-    margin: 0;
-
-    padding: 25px;
-
-    font-family:
-        Arial,
-        sans-serif;
-
-    color: white;
-
+body{
+    margin:0;
     background:
+        radial-gradient(
+            circle at top,
+            #35145f 0%,
+            transparent 40%
+        ),
         linear-gradient(
             135deg,
-            #090b18,
-            #1b1030,
-            #071d27
+            #070914,
+            #120b25,
+            #061b25
         );
-}}
+    color:white;
+    font-family:Arial,sans-serif;
+}
 
-.container {{
+main{
+    width:100%;
+    max-width:1050px;
+    margin:auto;
+    padding:20px;
+}
 
-    max-width: 1000px;
+header{
+    text-align:center;
+    padding:40px 10px;
+}
 
-    margin: auto;
-}}
+.logo{
+    color:#ff65c7;
+    font-size:22px;
+    font-weight:bold;
+    letter-spacing:2px;
+}
 
-.header {{
-
-    text-align: center;
-
-    padding: 35px 15px;
-}}
-
-.logo {{
-
-    color: #ff62c5;
-
-    font-size: 22px;
-
-    font-weight: bold;
-}}
-
-h1 {{
-
-    font-size: 45px;
-
-    margin: 15px 0;
-
+h1{
+    font-size:46px;
+    margin:15px 0;
     background:
         linear-gradient(
             90deg,
             #ff72c8,
-            #8b7aff
+            #8b7aff,
+            #55dfff
         );
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+}
 
-    -webkit-background-clip: text;
+.id{
+    color:#888;
+    font-size:13px;
+}
 
-    color: transparent;
-}}
+section{
+    margin:20px 0;
+    padding:25px;
+    border-radius:25px;
+    background:#ffffff0b;
+    border:1px solid #ffffff18;
+    backdrop-filter:blur(12px);
+}
 
-.memory-id {{
+h2{
+    color:#ff82d2;
+    margin-top:0;
+}
 
-    color: #aaa;
-
-    font-size: 15px;
-
-    word-break: break-all;
-}}
-
-.section {{
-
-    margin: 25px 0;
-
-    padding: 25px;
-
-    border-radius: 28px;
-
-    background: #ffffff0d;
-
-    border: 1px solid #ffffff1c;
-}}
-
-h2 {{
-
-    color: #ff82d2;
-
-    margin-top: 0;
-}}
-
-.photos {{
-
-    display: grid;
-
+.gallery{
+    display:grid;
     grid-template-columns:
         repeat(
-            auto-fit,
-            minmax(180px, 1fr)
+            auto-fill,
+            minmax(160px,1fr)
         );
+    gap:14px;
+}
 
-    gap: 15px;
-}}
+.photo{
+    aspect-ratio:1;
+    border-radius:18px;
+    overflow:hidden;
+    cursor:pointer;
+    background:#111;
+}
 
-.photo {{
+.photo img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}
 
-    overflow: hidden;
+video{
+    width:100%;
+    max-width:800px;
+    display:block;
+    margin:15px auto;
+    border-radius:18px;
+    background:#000;
+}
 
-    border-radius: 20px;
-
-    background: #151526;
-}}
-
-.photo img {{
-
-    display: block;
-
-    width: 100%;
-
-    height: 220px;
-
-    object-fit: cover;
-}}
-
-video {{
-
-    width: 100%;
-
-    max-width: 700px;
-
-    display: block;
-
-    margin: 15px auto;
-
-    border-radius: 20px;
-}}
-
-.message {{
-
-    width: 100%;
-
-    padding: 25px;
-
-    border-radius: 20px;
-
+.message{
+    padding:25px;
+    border-radius:20px;
     background:
         linear-gradient(
             135deg,
             #522044,
             #34305d
         );
+    white-space:pre-wrap;
+    line-height:1.8;
+    overflow-wrap:anywhere;
+}
 
-    font-size: 18px;
+.empty{
+    padding:35px;
+    text-align:center;
+    color:#888;
+}
 
-    line-height: 1.8;
+.footer{
+    text-align:center;
+    color:#777;
+    padding:30px 10px;
+    font-size:13px;
+}
 
-    white-space: pre-wrap;
+#viewer{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:#000e;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:9999;
+}
 
-    overflow-wrap: anywhere;
+#viewer img{
+    max-width:100%;
+    max-height:90vh;
+    border-radius:15px;
+}
 
-    word-break: break-word;
+.close{
+    position:absolute;
+    right:20px;
+    top:8px;
+    font-size:42px;
+    color:white;
+    cursor:pointer;
+}
 
-    overflow: hidden;
+@media(max-width:600px){
 
-    text-align: left;
-}}
+    main{
+        padding:12px;
+    }
 
-.empty {{
+    h1{
+        font-size:36px;
+    }
 
-    color: #999;
+    section{
+        padding:18px;
+    }
 
-    text-align: center;
-}}
+    .gallery{
+        grid-template-columns:
+            repeat(2,1fr);
+    }
 
-.footer {{
-
-    text-align: center;
-
-    color: #777;
-
-    padding: 30px;
-}}
-
-@media(max-width:600px) {{
-
-    body {{
-        padding: 15px;
-    }}
-
-    h1 {{
-        font-size: 35px;
-    }}
-
-    .section {{
-        padding: 20px;
-    }}
-
-    .message {{
-
-        font-size: 16px;
-
-        padding: 20px;
-
-        line-height: 1.8;
-
-    }}
-
-}}
+}
 
 </style>
 
@@ -759,9 +818,9 @@ video {{
 
 <body>
 
-<div class="container">
+<main>
 
-<div class="header">
+<header>
 
 <div class="logo">
 ♥ MEMORY QR
@@ -771,77 +830,115 @@ video {{
 Your Memories, Forever.
 </h1>
 
-<div class="memory-id">
-Memory ID: {memory_id}
+<div class="id">
+Memory ID: {{ memory_id }}
 </div>
 
-</div>
+</header>
 
-
-<section class="section">
+<section>
 
 <h2>
 📸 Beautiful Moments
 </h2>
 
-<div class="photos">
+<div class="gallery">
 
-{photo_html}
+{{ photo_html | safe }}
 
 </div>
 
 </section>
 
-
-<section class="section">
+<section>
 
 <h2>
 🎥 Memory Videos
 </h2>
 
-{video_html}
+{{ video_html | safe }}
 
 </section>
 
-
-<section class="section">
+<section>
 
 <h2>
-💌 Personal Diary
+💌 Special Message
 </h2>
 
 <div class="message">
-
-{safe_message}
-
+{{ message }}
 </div>
 
 </section>
 
-
 <div class="footer">
-
 This site is made by Aquib Khan ❤️
+</div>
+
+</main>
+
+<div
+id="viewer"
+onclick="closePhoto()">
+
+<span
+class="close">
+×
+</span>
+
+<img
+id="large"
+alt="Large photo">
 
 </div>
 
-</div>
+<script>
+
+function openPhoto(src){
+
+    document.getElementById(
+        "large"
+    ).src = src;
+
+    document.getElementById(
+        "viewer"
+    ).style.display = "flex";
+
+}
+
+function closePhoto(){
+
+    document.getElementById(
+        "viewer"
+    ).style.display = "none";
+
+}
+
+</script>
 
 </body>
 
 </html>
-"""
+        """,
+        memory_id=escape(memory_id),
+        photo_html=photo_html,
+        video_html=video_html,
+        message=safe_message
+    )
 
 
-# ==================================================
+# -------------------------------------------------
 # ADMIN LOGIN
-# ==================================================
+# -------------------------------------------------
 
 @app.route(
     "/admin/login",
     methods=["GET", "POST"]
 )
 def admin_login():
+
+    error = ""
 
     if request.method == "POST":
 
@@ -855,49 +952,40 @@ def admin_login():
             ""
         )
 
-
         if (
             username == ADMIN_USERNAME
             and password == ADMIN_PASSWORD
         ):
 
-            session["admin_logged_in"] = True
+            session[
+                "admin_logged_in"
+            ] = True
 
             return redirect(
-                url_for("admin_dashboard")
+                url_for(
+                    "admin_dashboard"
+                )
             )
 
-
-        return render_template_string(
-            ADMIN_LOGIN_HTML,
-            error="Invalid username or password."
+        error = (
+            "Invalid username or password"
         )
 
-
     return render_template_string(
-        ADMIN_LOGIN_HTML,
-        error=""
-    )
-
-
-# ==================================================
-# ADMIN LOGIN PAGE
-# ==================================================
-
-ADMIN_LOGIN_HTML = """
+        """
 <!DOCTYPE html>
 
-<html lang="en">
+<html>
 
 <head>
 
 <meta charset="UTF-8">
 
 <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0">
+name="viewport"
+content="width=device-width,initial-scale=1">
 
-<title>Admin Login • Memory QR</title>
+<title>Memory QR Admin Login</title>
 
 <style>
 
@@ -906,23 +994,13 @@ ADMIN_LOGIN_HTML = """
 }
 
 body{
-
     margin:0;
-
     min-height:100vh;
-
     display:flex;
-
     align-items:center;
-
     justify-content:center;
-
-    padding:20px;
-
     font-family:Arial,sans-serif;
-
     color:white;
-
     background:
         radial-gradient(
             circle at top,
@@ -937,109 +1015,49 @@ body{
         );
 }
 
-.login-box{
-
-    width:100%;
-
-    max-width:420px;
-
+.login{
+    width:92%;
+    max-width:430px;
     padding:35px;
-
     border-radius:28px;
-
     background:#ffffff0d;
-
-    border:1px solid #ffffff1c;
-
-    backdrop-filter:blur(20px);
-
-    box-shadow:
-        0 20px 70px #0008;
+    border:1px solid #ffffff18;
+    backdrop-filter:blur(18px);
 }
 
 .logo{
-
     text-align:center;
-
-    color:#ff69c7;
-
-    font-size:20px;
-
+    color:#ff69c8;
+    font-size:22px;
     font-weight:bold;
-
     letter-spacing:2px;
 }
 
 h1{
-
     text-align:center;
-
-    margin:18px 0 8px;
-
-    font-size:32px;
-
-    background:
-        linear-gradient(
-            90deg,
-            #ff73ca,
-            #8c7bff
-        );
-
-    -webkit-background-clip:text;
-
-    color:transparent;
-}
-
-.subtitle{
-
-    text-align:center;
-
-    color:#999;
-
-    margin-bottom:28px;
+    margin:15px 0 25px;
 }
 
 input{
-
     width:100%;
-
-    padding:16px;
-
-    margin-top:12px;
-
-    border-radius:15px;
-
+    padding:15px;
+    margin:7px 0;
+    border-radius:14px;
     border:1px solid #ffffff20;
-
-    background:#090b18;
-
+    background:#080912;
     color:white;
-
     outline:none;
-
-    font-size:15px;
 }
 
 button{
-
     width:100%;
-
     padding:16px;
-
-    margin-top:20px;
-
+    margin-top:15px;
     border:0;
-
     border-radius:15px;
-
     color:white;
-
     font-size:16px;
-
     font-weight:bold;
-
-    cursor:pointer;
-
     background:
         linear-gradient(
             90deg,
@@ -1049,29 +1067,9 @@ button{
 }
 
 .error{
-
-    margin-top:15px;
-
-    padding:12px;
-
-    border-radius:12px;
-
     text-align:center;
-
-    color:#ff9f9f;
-
-    background:#ff000015;
-}
-
-.footer{
-
-    text-align:center;
-
-    color:#666;
-
-    margin-top:25px;
-
-    font-size:13px;
+    color:#ff8585;
+    margin-bottom:12px;
 }
 
 </style>
@@ -1080,7 +1078,7 @@ button{
 
 <body>
 
-<div class="login-box">
+<div class="login">
 
 <div class="logo">
 ♥ MEMORY QR
@@ -1090,32 +1088,6 @@ button{
 Admin Login
 </h1>
 
-<div class="subtitle">
-Private dashboard
-</div>
-
-<form method="POST">
-
-<input
-    type="text"
-    name="username"
-    placeholder="Username"
-    autocomplete="username"
-    required>
-
-<input
-    type="password"
-    name="password"
-    placeholder="Password"
-    autocomplete="current-password"
-    required>
-
-<button type="submit">
-🔐 Login to Dashboard
-</button>
-
-</form>
-
 {% if error %}
 
 <div class="error">
@@ -1124,33 +1096,41 @@ Private dashboard
 
 {% endif %}
 
-<div class="footer">
-Memory QR Admin
-</div>
+<form method="POST">
+
+<input
+type="text"
+name="username"
+placeholder="Username"
+autocomplete="username"
+required>
+
+<input
+type="password"
+name="password"
+placeholder="Password"
+autocomplete="current-password"
+required>
+
+<button type="submit">
+LOGIN
+</button>
+
+</form>
 
 </div>
 
 </body>
 
 </html>
-"""
-
-
-# ==================================================
-# ADMIN PROTECTION
-# ==================================================
-
-def admin_required():
-
-    return session.get(
-        "admin_logged_in",
-        False
+        """,
+        error=error
     )
 
 
-# ==================================================
+# -------------------------------------------------
 # ADMIN DASHBOARD
-# ==================================================
+# -------------------------------------------------
 
 @app.route("/admin")
 def admin_dashboard():
@@ -1161,199 +1141,120 @@ def admin_dashboard():
             url_for("admin_login")
         )
 
-
     memories = []
 
-
-    if os.path.exists(
+    if os.path.isdir(
         UPLOAD_FOLDER
     ):
 
-        for memory_id in os.listdir(
-            UPLOAD_FOLDER
+        for memory_id in sorted(
+            os.listdir(UPLOAD_FOLDER),
+            reverse=True
         ):
 
             folder = get_memory_folder(
                 memory_id
             )
 
-
-            if not os.path.isdir(
-                folder
-            ):
-
+            if not os.path.isdir(folder):
                 continue
-
-
-            files = os.listdir(
-                folder
-            )
-
 
             photos = 0
             videos = 0
 
+            for filename in os.listdir(
+                folder
+            ):
 
-            for filename in files:
+                ext = os.path.splitext(
+                    filename
+                )[1].lower()
 
-                lower = filename.lower()
-
-
-                if lower.endswith(
-                    (
-                        ".jpg",
-                        ".jpeg",
-                        ".png",
-                        ".webp",
-                        ".gif"
-                    )
-                ):
+                if ext in {
+                    ".jpg",
+                    ".jpeg",
+                    ".png",
+                    ".webp",
+                    ".gif"
+                }:
 
                     photos += 1
 
-
-                elif lower.endswith(
-                    (
-                        ".mp4",
-                        ".webm",
-                        ".mov",
-                        ".mkv",
-                        ".avi",
-                        ".m4v"
-                    )
-                ):
+                elif ext in {
+                    ".mp4",
+                    ".webm",
+                    ".mov",
+                    ".m4v",
+                    ".mkv"
+                }:
 
                     videos += 1
-
-
-            has_message = os.path.exists(
-                get_message_file(
-                    memory_id
-                )
-            )
-
 
             memories.append({
                 "id": memory_id,
                 "photos": photos,
-                "videos": videos,
-                "message": has_message
+                "videos": videos
             })
-
-
-    memories.sort(
-        key=lambda x: x["id"],
-        reverse=True
-    )
-
 
     total_memories = len(
         memories
     )
 
     total_photos = sum(
-        x["photos"]
-        for x in memories
+        item["photos"]
+        for item in memories
     )
 
     total_videos = sum(
-        x["videos"]
-        for x in memories
+        item["videos"]
+        for item in memories
     )
 
+    try:
+
+        stats = get_stats()
+
+    except Exception:
+
+        stats = {
+            "total_visits": 0,
+            "today_visits": 0,
+            "seven_day_visits": 0,
+            "memory_views": 0,
+            "most_viewed": None,
+            "devices": [],
+            "browsers": []
+        }
+
+    most_viewed = stats.get(
+        "most_viewed"
+    )
+
+    if most_viewed:
+
+        most_viewed_id = most_viewed[0]
+        most_viewed_count = most_viewed[1]
+
+    else:
+
+        most_viewed_id = "—"
+        most_viewed_count = 0
 
     return render_template_string(
-        ADMIN_DASHBOARD_HTML,
-        memories=memories,
-        total_memories=total_memories,
-        total_photos=total_photos,
-        total_videos=total_videos
-    )
-
-
-# ==================================================
-# DELETE MEMORY
-# ==================================================
-
-@app.route(
-    "/admin/delete/<memory_id>",
-    methods=["POST"]
-)
-def admin_delete_memory(
-    memory_id
-):
-
-    if not admin_required():
-
-        return redirect(
-            url_for("admin_login")
-        )
-
-
-    folder = get_memory_folder(
-        memory_id
-    )
-
-
-    if os.path.exists(folder):
-
-        shutil.rmtree(
-            folder
-        )
-
-
-    qr_file = os.path.join(
-        QR_FOLDER,
-        f"{memory_id}.png"
-    )
-
-
-    if os.path.exists(
-        qr_file
-    ):
-
-        os.remove(
-            qr_file
-        )
-
-
-    return redirect(
-        url_for("admin_dashboard")
-    )
-
-
-# ==================================================
-# ADMIN LOGOUT
-# ==================================================
-
-@app.route("/admin/logout")
-def admin_logout():
-
-    session.clear()
-
-    return redirect(
-        url_for("admin_login")
-    )
-
-
-# ==================================================
-# ADMIN DASHBOARD HTML
-# ==================================================
-
-ADMIN_DASHBOARD_HTML = """
+        """
 <!DOCTYPE html>
 
-<html lang="en">
+<html>
 
 <head>
 
 <meta charset="UTF-8">
 
 <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0">
+name="viewport"
+content="width=device-width,initial-scale=1">
 
-<title>Admin Dashboard • Memory QR</title>
+<title>Memory QR Dashboard</title>
 
 <style>
 
@@ -1362,15 +1263,9 @@ ADMIN_DASHBOARD_HTML = """
 }
 
 body{
-
     margin:0;
-
-    min-height:100vh;
-
-    font-family:Arial,sans-serif;
-
     color:white;
-
+    font-family:Arial,sans-serif;
     background:
         radial-gradient(
             circle at top,
@@ -1385,257 +1280,198 @@ body{
         );
 }
 
-.container{
-
-    width:100%;
-
-    max-width:1100px;
-
+main{
+    max-width:1150px;
     margin:auto;
-
-    padding:25px 18px 45px;
+    padding:20px;
 }
 
-.topbar{
-
+header{
     display:flex;
-
     justify-content:space-between;
-
     align-items:center;
-
     gap:15px;
-
-    margin-bottom:30px;
+    padding:20px 0 30px;
 }
 
 .logo{
-
-    color:#ff69c7;
-
-    font-size:20px;
-
+    color:#ff69c8;
+    font-size:22px;
     font-weight:bold;
-
-    letter-spacing:1px;
+    letter-spacing:2px;
 }
 
 .logout{
-
-    padding:11px 17px;
-
-    border-radius:12px;
-
     text-decoration:none;
-
     color:white;
-
+    padding:11px 16px;
+    border-radius:12px;
     background:#ffffff12;
-
     border:1px solid #ffffff20;
 }
 
 h1{
-
     font-size:38px;
-
     margin:10px 0;
-
-    background:
-        linear-gradient(
-            90deg,
-            #ff73ca,
-            #8c7bff
-        );
-
-    -webkit-background-clip:text;
-
-    color:transparent;
 }
 
 .subtitle{
-
     color:#999;
-
-    margin-bottom:25px;
 }
 
 .stats{
-
     display:grid;
-
     grid-template-columns:
         repeat(
             auto-fit,
-            minmax(180px,1fr)
+            minmax(160px,1fr)
         );
-
-    gap:15px;
-
-    margin-bottom:25px;
+    gap:14px;
+    margin:20px 0;
 }
 
 .stat{
-
     padding:22px;
-
-    border-radius:22px;
-
+    border-radius:20px;
     background:#ffffff0d;
-
-    border:1px solid #ffffff1c;
+    border:1px solid #ffffff18;
 }
 
 .stat-number{
-
-    font-size:32px;
-
+    font-size:30px;
     font-weight:bold;
-
-    color:#ff75ca;
+    color:#ff72ca;
 }
 
 .stat-label{
-
-    margin-top:5px;
-
     color:#999;
+    margin-top:5px;
+}
+
+.card{
+    margin:20px 0;
+    padding:22px;
+    border-radius:24px;
+    background:#ffffff0d;
+    border:1px solid #ffffff18;
 }
 
 .memory{
-
-    padding:22px;
-
-    margin-top:15px;
-
-    border-radius:22px;
-
-    background:#ffffff0d;
-
-    border:1px solid #ffffff1c;
+    padding:20px 0;
+    border-bottom:1px solid #ffffff15;
 }
 
-.memory-top{
-
-    display:flex;
-
-    justify-content:space-between;
-
-    align-items:center;
-
-    gap:15px;
-
-    flex-wrap:wrap;
+.memory:last-child{
+    border-bottom:0;
 }
 
 .memory-id{
-
-    font-size:20px;
-
+    font-size:19px;
     font-weight:bold;
-
-    color:#fff;
+    color:#ff82d2;
+    word-break:break-all;
 }
 
-.badges{
-
-    display:flex;
-
-    gap:8px;
-
-    flex-wrap:wrap;
-
-    margin-top:15px;
-}
-
-.badge{
-
-    padding:8px 12px;
-
-    border-radius:10px;
-
-    background:#ffffff10;
-
-    color:#bbb;
-
-    font-size:13px;
+.info{
+    color:#999;
+    margin:8px 0 15px;
 }
 
 .actions{
-
-    display:flex;
-
+    display:grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(150px,1fr)
+        );
     gap:10px;
-
-    flex-wrap:wrap;
-
-    margin-top:18px;
 }
 
-.action{
-
-    padding:11px 15px;
-
-    border-radius:12px;
-
-    text-decoration:none;
-
+.btn{
+    display:block;
+    width:100%;
+    padding:13px;
+    border:0;
+    border-radius:13px;
     color:white;
+    text-decoration:none;
+    text-align:center;
+    font-weight:bold;
+    cursor:pointer;
+}
 
+.open{
     background:
         linear-gradient(
             90deg,
-            #6840a0,
-            #453b87
+            #ff4fb8,
+            #755cff
         );
+}
 
-    border:0;
+.qr{
+    background:
+        linear-gradient(
+            90deg,
+            #514b91,
+            #39456e
+        );
+}
 
-    cursor:pointer;
-
-    font-size:14px;
+.download{
+    background:
+        linear-gradient(
+            90deg,
+            #e83c9f,
+            #805cff
+        );
 }
 
 .delete{
-
-    background:
-        linear-gradient(
-            90deg,
-            #a82f59,
-            #74325e
-        );
+    background:#5b2028;
 }
 
 .empty{
-
-    text-align:center;
-
-    padding:50px 20px;
-
     color:#888;
+    text-align:center;
+    padding:30px;
+}
 
-    border-radius:22px;
+.analytics{
+    display:grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(200px,1fr)
+        );
+    gap:12px;
+}
 
-    background:#ffffff08;
-
+.analytics-box{
+    padding:18px;
+    border-radius:17px;
+    background:#080912;
     border:1px solid #ffffff12;
+}
+
+.analytics-box strong{
+    display:block;
+    color:#ff82d2;
+    margin-bottom:6px;
 }
 
 @media(max-width:600px){
 
-    .topbar{
+    main{
+        padding:14px;
+    }
 
+    header{
         align-items:flex-start;
     }
 
     h1{
-
-        font-size:31px;
-    }
-
-    .memory-top{
-
-        display:block;
+        font-size:30px;
     }
 
 }
@@ -1646,30 +1482,33 @@ h1{
 
 <body>
 
-<div class="container">
+<main>
 
-<div class="topbar">
+<header>
+
+<div>
 
 <div class="logo">
-♥ MEMORY QR • ADMIN
+♥ MEMORY QR
 </div>
-
-<a
-    class="logout"
-    href="/admin/logout">
-🚪 Logout
-</a>
-
-</div>
-
 
 <h1>
 Admin Dashboard
 </h1>
 
 <div class="subtitle">
-Manage your Memory QR customers and memories.
+Manage your memories, QR codes and links.
 </div>
+
+</div>
+
+<a
+class="logout"
+href="/admin/logout">
+Logout
+</a>
+
+</header>
 
 
 <div class="stats">
@@ -1686,7 +1525,6 @@ Total Memories
 
 </div>
 
-
 <div class="stat">
 
 <div class="stat-number">
@@ -1698,7 +1536,6 @@ Total Photos
 </div>
 
 </div>
-
 
 <div class="stat">
 
@@ -1712,8 +1549,83 @@ Total Videos
 
 </div>
 
+<div class="stat">
+
+<div class="stat-number">
+{{ stats.get("memory_views",0) }}
 </div>
 
+<div class="stat-label">
+Memory Views
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+📊 Analytics
+</h2>
+
+<div class="analytics">
+
+<div class="analytics-box">
+
+<strong>
+Total Visits
+</strong>
+
+{{ stats.get("total_visits",0) }}
+
+</div>
+
+<div class="analytics-box">
+
+<strong>
+Today
+</strong>
+
+{{ stats.get("today_visits",0) }}
+
+</div>
+
+<div class="analytics-box">
+
+<strong>
+Last 7 Days
+</strong>
+
+{{ stats.get("seven_day_visits",0) }}
+
+</div>
+
+<div class="analytics-box">
+
+<strong>
+Most Viewed Memory
+</strong>
+
+{{ most_viewed_id }}
+
+<br>
+
+{{ most_viewed_count }} views
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+💾 Your Memories
+</h2>
 
 {% if memories %}
 
@@ -1721,55 +1633,48 @@ Total Videos
 
 <div class="memory">
 
-<div class="memory-top">
-
 <div class="memory-id">
-Memory #{{ memory.id }}
+Memory {{ memory.id }}
 </div>
 
-</div>
+<div class="info">
 
-
-<div class="badges">
-
-<div class="badge">
-📸 {{ memory.photos }} Photos
-</div>
-
-<div class="badge">
-🎥 {{ memory.videos }} Videos
-</div>
-
-<div class="badge">
-💌
-{% if memory.message %}
-Diary Added
-{% else %}
-No Diary
-{% endif %}
-</div>
+📸 {{ memory.photos }} photos
+&nbsp;&nbsp;
+🎥 {{ memory.videos }} videos
 
 </div>
-
 
 <div class="actions">
 
 <a
-    class="action"
-    href="/memory/{{ memory.id }}"
-    target="_blank">
+class="btn open"
+href="/memory/{{ memory.id }}"
+target="_blank">
 ❤️ Open Memory
 </a>
 
+<a
+class="btn qr"
+href="/static/qr/{{ memory.id }}.png"
+target="_blank">
+🔳 View QR
+</a>
+
+<a
+class="btn download"
+href="/download-qr/{{ memory.id }}">
+⬇️ Download QR
+</a>
 
 <form
-    method="POST"
-    action="/admin/delete/{{ memory.id }}"
-    onsubmit="return confirm('Delete this memory permanently?');">
+method="POST"
+action="/admin/delete/{{ memory.id }}"
+onsubmit="return confirm('Delete this memory permanently?');">
 
 <button
-    type="submit"
-    class="action delete">
+class="btn delete"
+type="submit">
 🗑️ Delete
 </button>
 
@@ -1784,30 +1689,107 @@ No Diary
 {% else %}
 
 <div class="empty">
-
-<h2>
-No Memories Yet
-</h2>
-
-<p>
-Create your first Memory QR from the homepage.
-</p>
-
+No memories created yet.
 </div>
 
 {% endif %}
 
 </div>
 
+
+<div style="
+text-align:center;
+color:#777;
+padding:30px 0;
+font-size:13px;
+">
+
+This site is made by Aquib Khan ❤️
+
+</div>
+
+</main>
+
 </body>
 
 </html>
-"""
+        """,
+        memories=memories,
+        total_memories=total_memories,
+        total_photos=total_photos,
+        total_videos=total_videos,
+        stats=stats,
+        most_viewed_id=most_viewed_id,
+        most_viewed_count=most_viewed_count
+    )
 
 
-# ==================================================
-# START SERVER
-# ==================================================
+# -------------------------------------------------
+# DELETE MEMORY
+# -------------------------------------------------
+
+@app.route(
+    "/admin/delete/<memory_id>",
+    methods=["POST"]
+)
+def admin_delete(memory_id):
+
+    if not admin_required():
+
+        return redirect(
+            url_for("admin_login")
+        )
+
+    folder = get_memory_folder(
+        memory_id
+    )
+
+    if os.path.isdir(folder):
+
+        shutil.rmtree(
+            folder
+        )
+
+    qr_file = os.path.join(
+        QR_FOLDER,
+        memory_id + ".png"
+    )
+
+    if os.path.exists(
+        qr_file
+    ):
+
+        os.remove(
+            qr_file
+        )
+
+    return redirect(
+        url_for("admin_dashboard")
+    )
+
+
+# -------------------------------------------------
+# LOGOUT
+# -------------------------------------------------
+
+@app.route(
+    "/admin/logout"
+)
+def admin_logout():
+
+    session.pop(
+        "admin_logged_in",
+        None
+    )
+
+    return redirect(
+        url_for("admin_login")
+    )
+
+
+# -------------------------------------------------
+# RUN
+# -------------------------------------------------
 
 if __name__ == "__main__":
 

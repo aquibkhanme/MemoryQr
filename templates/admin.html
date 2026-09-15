@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory QR • Admin Dashboard</title>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    font-family:Arial,sans-serif;
+    color:#fff;
+    min-height:100vh;
+    background:
+        radial-gradient(circle at top left,#35145f 0%,transparent 35%),
+        radial-gradient(circle at bottom right,#102f4d 0%,transparent 35%),
+        linear-gradient(135deg,#070914,#120b25,#061b25);
+}
+
+.header{
+    position:sticky;
+    top:0;
+    z-index:10;
+    padding:18px 22px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:#0b0c18dd;
+    backdrop-filter:blur(18px);
+    border-bottom:1px solid #ffffff18;
+}
+
+.brand{
+    font-size:19px;
+    font-weight:bold;
+    letter-spacing:1px;
+    color:#ff69c8;
+}
+
+.logout{
+    text-decoration:none;
+    color:#fff;
+    padding:10px 16px;
+    border-radius:12px;
+    background:#ffffff12;
+    border:1px solid #ffffff15;
+}
+
+.container{
+    width:100%;
+    max-width:1250px;
+    margin:auto;
+    padding:28px 16px 50px;
+}
+
+.top{
+    margin-bottom:25px;
+}
+
+.top h1{
+    margin:0;
+    font-size:38px;
+    background:linear-gradient(90deg,#ff73ca,#8c7bff);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+}
+
+.top p{
+    margin:8px 0 0;
+    color:#999;
+}
+
+.cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:15px;
+}
+
+.card{
+    padding:22px;
+    border-radius:22px;
+    background:#ffffff0b;
+    border:1px solid #ffffff18;
+    backdrop-filter:blur(15px);
+}
+
+.card-icon{
+    font-size:25px;
+}
+
+.label{
+    color:#aaa;
+    font-size:13px;
+    margin-top:10px;
+}
+
+.number{
+    font-size:31px;
+    font-weight:bold;
+    margin-top:7px;
+}
+
+.section{
+    margin-top:30px;
+}
+
+.section-title{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin-bottom:14px;
+}
+
+.section-title h2{
+    margin:0;
+    font-size:22px;
+}
+
+.analytics-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:15px;
+}
+
+.row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 0;
+    border-bottom:1px solid #ffffff10;
+}
+
+.row:last-child{
+    border-bottom:0;
+}
+
+.row span{
+    color:#ddd;
+}
+
+.row strong{
+    color:#ff80d0;
+}
+
+.table-wrap{
+    overflow-x:auto;
+    border-radius:22px;
+    border:1px solid #ffffff15;
+    background:#ffffff09;
+}
+
+table{
+    width:100%;
+    min-width:900px;
+    border-collapse:collapse;
+}
+
+th,td{
+    padding:16px;
+    text-align:left;
+    border-bottom:1px solid #ffffff10;
+}
+
+th{
+    color:#aaa;
+    font-size:13px;
+}
+
+td{
+    color:#eee;
+}
+
+tr:last-child td{
+    border-bottom:0;
+}
+
+.memory-id{
+    font-family:monospace;
+    color:#ff82d2;
+}
+
+.actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+
+.btn{
+    display:inline-block;
+    padding:9px 13px;
+    border-radius:10px;
+    text-decoration:none;
+    color:white;
+    background:linear-gradient(90deg,#765cff,#9b5cff);
+}
+
+.delete{
+    padding:9px 13px;
+    border:0;
+    border-radius:10px;
+    color:white;
+    background:#e84d70;
+    cursor:pointer;
+}
+
+.qr-preview{
+    width:75px;
+    height:75px;
+    object-fit:contain;
+    padding:5px;
+    background:#fff;
+    border-radius:10px;
+}
+
+.link-box{
+    max-width:260px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#aaa;
+}
+
+.empty{
+    text-align:center;
+    color:#888;
+    padding:30px;
+}
+
+.footer{
+    text-align:center;
+    color:#666;
+    margin-top:35px;
+    font-size:13px;
+}
+
+@media(max-width:600px){
+    .header{
+        padding:15px;
+    }
+
+    .brand{
+        font-size:15px;
+    }
+
+    .logout{
+        padding:8px 11px;
+        font-size:13px;
+    }
+
+    .container{
+        padding:22px 12px 40px;
+    }
+
+    .top h1{
+        font-size:31px;
+    }
+
+    .card{
+        padding:18px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header class="header">
+    <div class="brand">♥ MEMORY QR ADMIN</div>
+    <a class="logout" href="/admin/logout">Logout</a>
+</header>
+
+<main class="container">
+
+<div class="top">
+    <h1>Dashboard</h1>
+    <p>Manage memories, QR codes and visitor analytics.</p>
+</div>
+
+<!-- MAIN STATS -->
+
+<div class="cards">
+
+    <div class="card">
+        <div class="card-icon">💝</div>
+        <div class="label">Total Memories</div>
+        <div class="number">{{ total_memories }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">📸</div>
+        <div class="label">Total Photos</div>
+        <div class="number">{{ total_photos }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">🎥</div>
+        <div class="label">Total Videos</div>
+        <div class="number">{{ total_videos }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">👁️</div>
+        <div class="label">Total Visits</div>
+        <div class="number">{{ stats.total_visits }}</div>
+    </div>
+
+</div>
+
+
+<!-- ANALYTICS -->
+
+<section class="section">
+
+<div class="section-title">
+    <span>📊</span>
+    <h2>Visitor Analytics</h2>
+</div>
+
+<div class="analytics-grid">
+
+    <div class="card">
+        <div class="card-icon">📅</div>
+        <div class="label">Today</div>
+        <div class="number">{{ stats.today_visits }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">📈</div>
+        <div class="label">Last 7 Days</div>
+        <div class="number">{{ stats.seven_day_visits }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">👀</div>
+        <div class="label">Memory Views</div>
+        <div class="number">{{ stats.memory_views }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">🏆</div>
+        <div class="label">Most Viewed Memory</div>
+        <div class="number">{{ most_viewed_count }}</div>
+        <div class="label">{{ most_viewed_id }}</div>
+    </div>
+
+</div>
+
+</section>
+
+
+<!-- DEVICES -->
+
+<section class="section">
+
+<div class="section-title">
+    <span>📱</span>
+    <h2>Devices</h2>
+</div>
+
+<div class="card">
+
+{% for device, count in stats.devices %}
+
+<div class="row">
+    <span>{{ device }}</span>
+    <strong>{{ count }}</strong>
+</div>
+
+{% else %}
+
+<div class="empty">No device data yet.</div>
+
+{% endfor %}
+
+</div>
+
+</section>
+
+
+<!-- BROWSERS -->
+
+<section class="section">
+
+<div class="section-title">
+    <span>🌐</span>
+    <h2>Browsers</h2>
+</div>
+
+<div class="card">
+
+{% for browser, count in stats.browsers %}
+
+<div class="row">
+    <span>{{ browser }}</span>
+    <strong>{{ count }}</strong>
+</div>
+
+{% else %}
+
+<div class="empty">No browser data yet.</div>
+
+{% endfor %}
+
+</div>
+
+</section>
+
+
+<!-- MEMORIES -->
+
+<section class="section">
+
+<div class="section-title">
+    <span>💝</span>
+    <h2>All Memories</h2>
+</div>
+
+<div class="table-wrap">
+
+<table>
+
+<thead>
+<tr>
+    <th>Memory ID</th>
+    <th>Photos</th>
+    <th>Videos</th>
+    <th>QR</th>
+    <th>Memory Link</th>
+    <th>Actions</th>
+</tr>
+</thead>
+
+<tbody>
+
+{% for memory in memories %}
+
+<tr>
+
+<td>
+    <div class="memory-id">{{ memory.id }}</div>
+</td>
+
+<td>
+    📸 {{ memory.photos }}
+</td>
+
+<td>
+    🎥 {{ memory.videos }}
+</td>
+
+<td>
+    <img
+        class="qr-preview"
+        src="/static/qr/{{ memory.id }}.png"
+        alt="QR">
+</td>
+
+<td>
+    <div class="link-box">
+        {{ request.host_url.rstrip('/') }}/memory/{{ memory.id }}
+    </div>
+</td>
+
+<td>
+
+<div class="actions">
+
+<a
+    class="btn"
+    href="/memory/{{ memory.id }}"
+    target="_blank">
+    View
+</a>
+
+<form
+    method="POST"
+    action="/admin/delete/{{ memory.id }}"
+    onsubmit="return confirm('Delete this memory permanently?');">
+
+<button
+    class="delete"
+    type="submit">
+    Delete
+</button>
+
+</form>
+
+</div>
+
+</td>
+
+</tr>
+
+{% else %}
+
+<tr>
+<td colspan="6" class="empty">
+    No memories created yet.
+</td>
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
+
+</div>
+
+</section>
+
+<div class="footer">
+    This site is made by Aquib Khan ❤️
+</div>
+
+</main>
+
+</body>
+</html>

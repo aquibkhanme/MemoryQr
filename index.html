@@ -1,8 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+<meta
+    name="robots"
+    content="noindex,nofollow,noarchive">
 
 <title>Memory QR</title>
 
@@ -158,7 +167,7 @@ button:active{
 }
 
 .qr-box img{
-    width:220px;
+    width:240px;
     max-width:100%;
     border-radius:20px;
     background:white;
@@ -172,6 +181,39 @@ button:active{
     background:#ffffff0d;
     color:#bbb;
     word-break:break-all;
+    text-align:left;
+}
+
+.action-row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-top:12px;
+}
+
+.action-row button,
+.action-row a{
+    text-decoration:none;
+    text-align:center;
+    display:block;
+    padding:15px;
+    border-radius:16px;
+    color:white;
+    font-weight:bold;
+    border:0;
+    cursor:pointer;
+}
+
+.copy-btn{
+    background:linear-gradient(90deg,#39456e,#514b91);
+}
+
+.download-btn{
+    background:linear-gradient(90deg,#e83c9f,#805cff);
+}
+
+.open-btn{
+    background:linear-gradient(90deg,#ff4fb8,#755cff);
 }
 
 .footer{
@@ -181,7 +223,24 @@ button:active{
     font-size:14px;
 }
 
+@media(max-width:600px){
+
+    h1{
+        font-size:36px;
+    }
+
+    .card{
+        padding:20px;
+    }
+
+    .action-row{
+        grid-template-columns:1fr;
+    }
+
+}
+
 </style>
+
 </head>
 
 <body>
@@ -214,19 +273,24 @@ Create a beautiful private memory with photos, videos and your personal diary.
 <div class="upload-box">
 
 <label class="upload-label">
+
 Select Photos
+
 <input
     id="photoInput"
     type="file"
     accept="image/*"
     multiple
     onchange="showFiles('photoInput','photoInfo')">
+
 </label>
 
 <div
     id="photoInfo"
     class="file-info">
+
 No photos selected
+
 </div>
 
 </div>
@@ -243,19 +307,24 @@ No photos selected
 <div class="upload-box">
 
 <label class="upload-label">
+
 Select Videos
+
 <input
     id="videoInput"
     type="file"
     accept="video/*"
     multiple
     onchange="showFiles('videoInput','videoInfo')">
+
 </label>
 
 <div
     id="videoInfo"
     class="file-info">
+
 No videos selected
+
 </div>
 
 </div>
@@ -278,24 +347,28 @@ You can write multiple paragraphs.
 
 Line breaks will remain exactly like you type them.
 
-You can write up to 10,000 words depending on the text."></textarea>
+You can write up to 70,000 characters."></textarea>
 
 <div
     id="counter"
     class="counter">
+
 0 characters
+
 </div>
 
 <button
     type="button"
     onclick="saveDiary()">
+
 💌 Save Personal Diary
+
 </button>
 
 </div>
 
 
-<!-- CREATE QR -->
+<!-- CREATE MEMORY -->
 
 <div class="card">
 
@@ -304,13 +377,18 @@ You can write up to 10,000 words depending on the text."></textarea>
 <button
     type="button"
     onclick="createMemory()">
-Create My Memory
+
+✨ Create My Memory
+
 </button>
 
 <div
     id="status"
     class="status">
 </div>
+
+
+<!-- QR RESULT -->
 
 <div
     id="qrBox"
@@ -330,10 +408,37 @@ Your Memory QR
     class="memory-link">
 </div>
 
+
+<div class="action-row">
+
 <button
+    class="copy-btn"
+    type="button"
+    onclick="copyMemoryLink()">
+
+📋 Copy Link
+
+</button>
+
+<a
+    id="downloadQR"
+    class="download-btn"
+    href="#">
+
+⬇️ Download QR
+
+</a>
+
+</div>
+
+
+<button
+    class="open-btn"
     type="button"
     onclick="openMemory()">
+
 ❤️ Open My Memory
+
 </button>
 
 </div>
@@ -350,24 +455,26 @@ This site is made by Aquib Khan ❤️
 
 <script>
 
-/*
-   Current Memory ID.
-   Browser session/local storage me save rahegi.
-*/
-
 let memoryId =
-    localStorage.getItem("memoryqr_memory_id") || "";
+    localStorage.getItem(
+        "memoryqr_memory_id"
+    ) || "";
 
 
-/* File names show karna */
-
-function showFiles(inputId,infoId){
+function showFiles(
+    inputId,
+    infoId
+){
 
     const input =
-        document.getElementById(inputId);
+        document.getElementById(
+            inputId
+        );
 
     const info =
-        document.getElementById(infoId);
+        document.getElementById(
+            infoId
+        );
 
     const files =
         Array.from(input.files);
@@ -386,13 +493,16 @@ function showFiles(inputId,infoId){
 }
 
 
-/* Diary character counter */
-
 const diary =
-    document.getElementById("diary");
+    document.getElementById(
+        "diary"
+    );
 
 const counter =
-    document.getElementById("counter");
+    document.getElementById(
+        "counter"
+    );
+
 
 diary.addEventListener(
     "input",
@@ -406,14 +516,12 @@ diary.addEventListener(
 );
 
 
-/*
-   Create Memory
-*/
-
 async function createMemory(){
 
     const status =
-        document.getElementById("status");
+        document.getElementById(
+            "status"
+        );
 
     status.textContent =
         "Creating your memory...";
@@ -441,13 +549,10 @@ async function createMemory(){
         }
 
 
-        /*
-           IMPORTANT:
-           Backend se aayi exact ID save hogi.
-        */
-
         memoryId =
-            String(data.memory_id);
+            String(
+                data.memory_id
+            );
 
         localStorage.setItem(
             "memoryqr_memory_id",
@@ -455,16 +560,15 @@ async function createMemory(){
         );
 
 
-        /*
-           Photos upload
-        */
-
         const photoInput =
             document.getElementById(
                 "photoInput"
             );
 
-        if(photoInput.files.length > 0){
+
+        if(
+            photoInput.files.length > 0
+        ){
 
             await uploadFiles(
                 photoInput.files,
@@ -474,16 +578,15 @@ async function createMemory(){
         }
 
 
-        /*
-           Videos upload
-        */
-
         const videoInput =
             document.getElementById(
                 "videoInput"
             );
 
-        if(videoInput.files.length > 0){
+
+        if(
+            videoInput.files.length > 0
+        ){
 
             await uploadFiles(
                 videoInput.files,
@@ -493,14 +596,13 @@ async function createMemory(){
         }
 
 
-        /*
-           Diary save
-        */
-
         const diaryText =
             diary.value;
 
-        if(diaryText.trim().length > 0){
+
+        if(
+            diaryText.trim().length > 0
+        ){
 
             const diaryResponse =
                 await fetch(
@@ -514,19 +616,25 @@ async function createMemory(){
                         },
 
                         body:JSON.stringify({
+
                             memory_id:
                                 memoryId,
 
                             message:
                                 diaryText
+
                         })
                     }
                 );
 
+
             const diaryData =
                 await diaryResponse.json();
 
-            if(!diaryData.success){
+
+            if(
+                !diaryData.success
+            ){
 
                 status.textContent =
                     "Diary save error: " +
@@ -537,27 +645,16 @@ async function createMemory(){
 
                 return;
             }
+
         }
 
 
-        /*
-           QR show
-        */
+        showQR(
+            data.qr,
+            data.memory_url,
+            memoryId
+        );
 
-        document.getElementById(
-            "qrImage"
-        ).src =
-            data.qr;
-
-        document.getElementById(
-            "memoryLink"
-        ).textContent =
-            data.memory_url;
-
-        document.getElementById(
-            "qrBox"
-        ).style.display =
-            "block";
 
         status.textContent =
             "✅ Memory created successfully!";
@@ -574,9 +671,36 @@ async function createMemory(){
 }
 
 
-/*
-   Upload multiple files
-*/
+function showQR(
+    qr,
+    link,
+    id
+){
+
+    document.getElementById(
+        "qrImage"
+    ).src = qr;
+
+
+    document.getElementById(
+        "memoryLink"
+    ).textContent = link;
+
+
+    document.getElementById(
+        "downloadQR"
+    ).href =
+        "/download-qr/" +
+        encodeURIComponent(id);
+
+
+    document.getElementById(
+        "qrBox"
+    ).style.display =
+        "block";
+
+}
+
 
 async function uploadFiles(
     files,
@@ -586,10 +710,12 @@ async function uploadFiles(
     const formData =
         new FormData();
 
+
     formData.append(
         "memory_id",
         id
     );
+
 
     for(
         const file of files
@@ -602,6 +728,7 @@ async function uploadFiles(
 
     }
 
+
     const response =
         await fetch(
             "/upload",
@@ -611,8 +738,10 @@ async function uploadFiles(
             }
         );
 
+
     const data =
         await response.json();
+
 
     if(!data.success){
 
@@ -620,16 +749,14 @@ async function uploadFiles(
             data.error ||
             "Upload failed"
         );
+
     }
+
 
     return data;
 
 }
 
-
-/*
-   Save diary separately
-*/
 
 async function saveDiary(){
 
@@ -648,18 +775,15 @@ async function saveDiary(){
             "Please write something first.";
 
         return;
+
     }
 
-
-    /*
-       Agar Memory ID nahi hai,
-       pehle automatically memory create hogi.
-    */
 
     if(!memoryId){
 
         status.textContent =
             "Creating memory...";
+
 
         try{
 
@@ -671,8 +795,10 @@ async function saveDiary(){
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if(!data.success){
 
@@ -681,15 +807,28 @@ async function saveDiary(){
                     "Memory creation failed.";
 
                 return;
+
             }
 
+
             memoryId =
-                String(data.memory_id);
+                String(
+                    data.memory_id
+                );
+
 
             localStorage.setItem(
                 "memoryqr_memory_id",
                 memoryId
             );
+
+
+            showQR(
+                data.qr,
+                data.memory_url,
+                memoryId
+            );
+
 
         }catch(error){
 
@@ -697,6 +836,7 @@ async function saveDiary(){
                 error.message;
 
             return;
+
         }
 
     }
@@ -746,6 +886,7 @@ async function saveDiary(){
                 );
 
             return;
+
         }
 
 
@@ -764,16 +905,56 @@ async function saveDiary(){
 }
 
 
-/*
-   Open memory
-*/
+async function copyMemoryLink(){
+
+    const link =
+        document.getElementById(
+            "memoryLink"
+        ).textContent;
+
+
+    if(!link){
+        return;
+    }
+
+
+    try{
+
+        await navigator.clipboard.writeText(
+            link
+        );
+
+
+        const status =
+            document.getElementById(
+                "status"
+            );
+
+
+        status.textContent =
+            "✅ Memory link copied!";
+
+
+    }catch(error){
+
+        prompt(
+            "Copy your memory link:",
+            link
+        );
+
+    }
+
+}
+
 
 function openMemory(){
 
     if(!memoryId){
 
         return;
+
     }
+
 
     window.location.href =
         "/memory/" +
@@ -786,4 +967,5 @@ function openMemory(){
 </script>
 
 </body>
+
 </html>

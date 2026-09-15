@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1.0">
+
+<title>Memory QR ❤️</title>
+
+<style>
+
+*{
+box-sizing:border-box;
+}
+
+body{
+margin:0;
+font-family:Arial,Helvetica,sans-serif;
+color:white;
+min-height:100vh;
+background:
+radial-gradient(
+circle at top left,
+#35206a,
+transparent 38%
+),
+radial-gradient(
+circle at bottom right,
+#173d58,
+transparent 35%
+),
+#080b15;
+}
+
+.container{
+width:100%;
+max-width:850px;
+margin:auto;
+padding:20px 15px 40px;
+}
+
+.hero{
+text-align:center;
+padding:35px 10px 25px;
+}
+
+.logo{
+font-size:48px;
+}
+
+.hero h1{
+font-size:clamp(34px,8vw,58px);
+margin:8px 0;
+}
+
+.hero p{
+color:#bfc2d2;
+font-size:16px;
+}
+
+.card{
+padding:22px;
+margin-top:18px;
+border-radius:25px;
+background:rgba(255,255,255,.07);
+border:1px solid rgba(255,255,255,.12);
+box-shadow:
+0 20px 70px rgba(0,0,0,.3);
+}
+
+.card h2{
+margin-top:0;
+}
+
+input[type=file]{
+display:block;
+width:100%;
+padding:14px;
+border-radius:13px;
+border:1px dashed rgba(255,255,255,.25);
+background:rgba(0,0,0,.18);
+color:#ddd;
+margin:10px 0 18px;
+}
+
+textarea{
+width:100%;
+min-height:230px;
+resize:vertical;
+padding:16px;
+border-radius:15px;
+border:1px solid rgba(255,255,255,.13);
+background:rgba(0,0,0,.2);
+color:white;
+font-size:16px;
+line-height:1.6;
+outline:none;
+}
+
+textarea::placeholder{
+color:#858898;
+}
+
+.counter{
+text-align:right;
+font-size:13px;
+color:#999;
+margin-top:7px;
+}
+
+button{
+width:100%;
+padding:14px;
+border:0;
+border-radius:13px;
+background:white;
+color:#111;
+font-size:16px;
+font-weight:bold;
+cursor:pointer;
+margin-top:12px;
+}
+
+button:disabled{
+opacity:.5;
+}
+
+.status{
+margin-top:14px;
+padding:12px;
+border-radius:12px;
+background:rgba(255,255,255,.06);
+color:#bbb;
+display:none;
+}
+
+.result{
+display:none;
+text-align:center;
+}
+
+.qr{
+width:220px;
+max-width:100%;
+padding:12px;
+background:white;
+border-radius:18px;
+margin:15px auto;
+}
+
+.memory-link{
+display:block;
+color:#bfcaff;
+word-break:break-all;
+margin:10px 0;
+}
+
+.copy-btn{
+background:rgba(255,255,255,.12);
+color:white;
+border:1px solid rgba(255,255,255,.15);
+}
+
+footer{
+text-align:center;
+color:#888;
+font-size:14px;
+margin-top:45px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="hero">
+
+<div class="logo">
+💝
+</div>
+
+<h1>
+Memory QR
+</h1>
+
+<p>
+Turn your special moments into one beautiful QR experience.
+</p>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+📸 Add Photos
+</h2>
+
+<input
+id="photos"
+type="file"
+accept="image/*"
+multiple>
+
+
+<h2>
+🎥 Add Videos
+</h2>
+
+<input
+id="videos"
+type="file"
+accept="video/*"
+multiple>
+
+
+<h2>
+💌 Personal Diary
+</h2>
+
+<textarea
+id="diary"
+maxlength="70000"
+placeholder="Write your memories, feelings, story or personal message here..."></textarea>
+
+<div class="counter">
+<span id="count">0</span> / 70000 characters
+</div>
+
+
+<button
+id="createBtn"
+onclick="createMemory()">
+
+✨ Create My Memory QR
+
+</button>
+
+<div
+id="status"
+class="status">
+</div>
+
+</div>
+
+
+<div
+id="result"
+class="card result">
+
+<h2>
+🎉 Your Memory QR is Ready
+</h2>
+
+<img
+id="qr"
+class="qr"
+alt="Memory QR">
+
+<a
+id="memoryLink"
+class="memory-link"
+target="_blank">
+</a>
+
+<button
+class="copy-btn"
+onclick="copyLink()">
+
+📋 Copy Memory Link
+
+</button>
+
+</div>
+
+
+<footer>
+This site is made by Aquib Khan ❤️
+</footer>
+
+</div>
+
+
+<script>
+
+var diary =
+document.getElementById("diary");
+
+var count =
+document.getElementById("count");
+
+diary.addEventListener(
+"input",
+function(){
+
+count.textContent =
+diary.value.length;
+
+}
+);
+
+
+function setStatus(
+message
+){
+
+var status =
+document.getElementById("status");
+
+status.style.display =
+"block";
+
+status.textContent =
+message;
+
+}
+
+
+async function createMemory(){
+
+var button =
+document.getElementById(
+"createBtn"
+);
+
+button.disabled =
+true;
+
+setStatus(
+"Creating your Memory QR..."
+);
+
+try{
+
+var createResponse =
+await fetch(
+"/create-memory",
+{
+method:"POST"
+}
+);
+
+var createData =
+await createResponse.json();
+
+if(!createData.success){
+
+throw new Error(
+"Could not create memory"
+);
+
+}
+
+var memoryId =
+createData.memory_id;
+
+localStorage.setItem(
+"memory_id",
+memoryId
+);
+
+
+var photoFiles =
+document.getElementById(
+"photos"
+).files;
+
+if(photoFiles.length > 0){
+
+setStatus(
+"Uploading photos..."
+);
+
+await uploadFiles(
+memoryId,
+photoFiles
+);
+
+}
+
+
+var videoFiles =
+document.getElementById(
+"videos"
+).files;
+
+if(videoFiles.length > 0){
+
+setStatus(
+"Uploading videos..."
+);
+
+await uploadFiles(
+memoryId,
+videoFiles
+);
+
+}
+
+
+var message =
+diary.value;
+
+if(message.trim()){
+
+setStatus(
+"Saving your personal message..."
+);
+
+var formData =
+new FormData();
+
+formData.append(
+"memory_id",
+memoryId
+);
+
+formData.append(
+"message",
+message
+);
+
+var messageResponse =
+await fetch(
+"/save-message",
+{
+method:"POST",
+body:formData
+}
+);
+
+var messageData =
+await messageResponse.json();
+
+if(!messageData.success){
+
+throw new Error(
+messageData.error ||
+"Message could not be saved"
+);
+
+}
+
+}
+
+
+document.getElementById(
+"qr"
+).src =
+createData.qr;
+
+document.getElementById(
+"memoryLink"
+).href =
+createData.url;
+
+document.getElementById(
+"memoryLink"
+).textContent =
+createData.url;
+
+document.getElementById(
+"result"
+).style.display =
+"block";
+
+setStatus(
+"✅ Memory created successfully!"
+);
+
+document.getElementById(
+"result"
+).scrollIntoView({
+behavior:"smooth"
+});
+
+}catch(error){
+
+setStatus(
+"❌ " + error.message
+);
+
+}finally{
+
+button.disabled =
+false;
+
+}
+
+}
+
+
+async function uploadFiles(
+memoryId,
+files
+){
+
+var formData =
+new FormData();
+
+formData.append(
+"memory_id",
+memoryId
+);
+
+for(
+var i = 0;
+i < files.length;
+i++
+){
+
+formData.append(
+"file",
+files[i]
+);
+
+}
+
+var response =
+await fetch(
+"/upload",
+{
+method:"POST",
+body:formData
+}
+);
+
+var data =
+await response.json();
+
+if(!data.success){
+
+throw new Error(
+data.error ||
+"Upload failed"
+);
+
+}
+
+}
+
+
+async function copyLink(){
+
+var link =
+document.getElementById(
+"memoryLink"
+).textContent;
+
+try{
+
+await navigator.clipboard.writeText(
+link
+);
+
+setStatus(
+"✅ Memory link copied!"
+);
+
+}catch(error){
+
+setStatus(
+"Copy failed. Long press the link to copy it."
+);
+
+}
+
+}
+
+</script>
+
+</body>
+
+</html>

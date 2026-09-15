@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Memory QR — Your Memories, Forever</title>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+html{
+    scroll-behavior:smooth;
+}
+
+body{
+    margin:0;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#fff;
+    background:
+        radial-gradient(circle at 10% 10%,rgba(255,80,190,.18),transparent 30%),
+        radial-gradient(circle at 90% 20%,rgba(80,190,255,.16),transparent 30%),
+        linear-gradient(135deg,#070814,#160c27 50%,#061820);
+    min-height:100vh;
+}
+
+.container{
+    width:92%;
+    max-width:1050px;
+    margin:auto;
+}
+
+/* HEADER */
+
+header{
+    padding:24px 0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.logo{
+    font-size:22px;
+    font-weight:800;
+    letter-spacing:.5px;
+}
+
+.logo span{
+    color:#ff65c8;
+}
+
+.admin-link{
+    color:#aaa;
+    text-decoration:none;
+    font-size:13px;
+}
+
+/* HERO */
+
+.hero{
+    text-align:center;
+    padding:65px 10px 45px;
+}
+
+.badge{
+    display:inline-block;
+    padding:9px 15px;
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:50px;
+    background:rgba(255,255,255,.06);
+    color:#ddd;
+    font-size:13px;
+    margin-bottom:20px;
+}
+
+.hero h1{
+    margin:0;
+    font-size:clamp(42px,8vw,76px);
+    line-height:1.05;
+    background:linear-gradient(
+        90deg,
+        #ff54c7,
+        #a56cff,
+        #5ce4ff
+    );
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+}
+
+.hero p{
+    max-width:650px;
+    margin:22px auto;
+    color:#aaa;
+    font-size:18px;
+    line-height:1.6;
+}
+
+.primary-btn{
+    border:0;
+    padding:16px 28px;
+    border-radius:16px;
+    background:linear-gradient(90deg,#ff36b7,#805cff);
+    color:#fff;
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    box-shadow:0 12px 35px rgba(190,70,220,.25);
+}
+
+.primary-btn:active{
+    transform:scale(.97);
+}
+
+/* MAIN CARDS */
+
+.card{
+    margin:22px 0;
+    padding:26px;
+    border-radius:25px;
+    background:rgba(255,255,255,.055);
+    border:1px solid rgba(255,255,255,.11);
+    backdrop-filter:blur(15px);
+}
+
+.card h2{
+    margin-top:0;
+    font-size:21px;
+}
+
+.card-subtitle{
+    color:#999;
+    font-size:14px;
+    margin-top:-8px;
+    margin-bottom:20px;
+}
+
+/* UPLOAD BUTTONS */
+
+.upload-row{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+}
+
+.upload-btn{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:16px;
+    border-radius:15px;
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.12);
+    cursor:pointer;
+    font-weight:700;
+}
+
+.upload-btn:hover{
+    background:rgba(255,255,255,.13);
+}
+
+input[type="file"]{
+    display:none;
+}
+
+/* GALLERY */
+
+.gallery{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
+}
+
+.gallery img{
+    width:100%;
+    height:190px;
+    object-fit:cover;
+    border-radius:17px;
+    display:block;
+}
+
+.empty{
+    grid-column:1/-1;
+    padding:30px;
+    text-align:center;
+    color:#777;
+    border:1px dashed rgba(255,255,255,.15);
+    border-radius:16px;
+}
+
+/* VIDEOS */
+
+.video-list{
+    display:grid;
+    gap:15px;
+}
+
+.video-item video{
+    width:100%;
+    max-height:450px;
+    border-radius:18px;
+    background:#000;
+}
+
+/* DIARY */
+
+textarea{
+    width:100%;
+    min-height:230px;
+    resize:vertical;
+    padding:18px;
+    border-radius:17px;
+    border:1px solid rgba(255,255,255,.13);
+    outline:none;
+    background:rgba(0,0,0,.22);
+    color:#fff;
+    font-size:16px;
+    line-height:1.6;
+}
+
+textarea::placeholder{
+    color:#777;
+}
+
+.counter{
+    text-align:right;
+    color:#777;
+    font-size:12px;
+    margin-top:7px;
+}
+
+/* QR */
+
+.qr-box{
+    display:none;
+    text-align:center;
+}
+
+.qr-image{
+    width:230px;
+    max-width:80%;
+    background:#fff;
+    padding:12px;
+    border-radius:20px;
+    margin:15px auto;
+}
+
+.memory-id{
+    color:#aaa;
+    font-size:13px;
+    word-break:break-all;
+}
+
+.open-memory{
+    display:inline-block;
+    text-decoration:none;
+    margin-top:10px;
+    padding:13px 22px;
+    border-radius:14px;
+    background:#fff;
+    color:#111;
+    font-weight:700;
+}
+
+/* STATUS */
+
+.status{
+    min-height:20px;
+    color:#7fffd4;
+    font-size:14px;
+    margin-top:12px;
+}
+
+/* FOOTER */
+
+footer{
+    text-align:center;
+    padding:45px 0 25px;
+    color:#666;
+    font-size:13px;
+}
+
+.creator{
+    color:#ff65c8;
+    font-weight:700;
+    margin-bottom:10px;
+}
+
+/* MOBILE */
+
+@media(max-width:650px){
+
+    .container{
+        width:94%;
+    }
+
+    header{
+        padding:18px 0;
+    }
+
+    .hero{
+        padding:45px 5px 30px;
+    }
+
+    .hero h1{
+        font-size:45px;
+    }
+
+    .hero p{
+        font-size:16px;
+    }
+
+    .card{
+        padding:19px;
+        border-radius:21px;
+    }
+
+    .upload-row{
+        grid-template-columns:1fr;
+    }
+
+    .gallery{
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .gallery img{
+        height:150px;
+    }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+
+<div class="logo">
+♥ <span>MEMORY QR</span>
+</div>
+
+<a
+class="admin-link"
+href="/admin/login">
+Admin
+</a>
+
+</header>
+
+
+<section class="hero">
+
+<div class="badge">
+✨ Turn moments into memories
+</div>
+
+<h1>
+Your Memories,<br>
+Forever.
+</h1>
+
+<p>
+Create one beautiful QR code containing your
+photos, videos and personal message.
+</p>
+
+<button
+class="primary-btn"
+onclick="createMemory()">
+✨ Create New Memory
+</button>
+
+</section>
+
+
+<!-- PHOTOS -->
+
+<div class="card">
+
+<h2>📸 Your Photos</h2>
+
+<p class="card-subtitle">
+Add the moments you want to keep forever.
+</p>
+
+<div class="upload-row">
+
+<label class="upload-btn">
+
+📷 Camera
+
+<input
+type="file"
+accept="image/*"
+capture="environment"
+onchange="addPhoto(this.files[0])">
+
+</label>
+
+
+<label class="upload-btn">
+
+🖼️ Choose Photos
+
+<input
+type="file"
+accept="image/*"
+multiple
+onchange="addPhotos(this.files)">
+
+</label>
+
+</div>
+
+<br>
+
+<div
+id="gallery"
+class="gallery">
+
+<div class="empty">
+Your selected photos will appear here
+</div>
+
+</div>
+
+</div>
+
+
+<!-- VIDEOS -->
+
+<div class="card">
+
+<h2>🎥 Your Videos</h2>
+
+<p class="card-subtitle">
+Add special videos to your memory.
+</p>
+
+<label class="upload-btn">
+
+🎬 Choose Videos
+
+<input
+type="file"
+accept="video/*"
+multiple
+onchange="addVideos(this.files)">
+
+</label>
+
+<br>
+
+<div
+id="videoList"
+class="video-list">
+
+</div>
+
+</div>
+
+
+<!-- DIARY -->
+
+<div class="card">
+
+<h2>💌 Personal Diary</h2>
+
+<p class="card-subtitle">
+Write your story, feelings or a special message.
+</p>
+
+<textarea
+id="message"
+maxlength="70000"
+placeholder="Write your personal memory here..."></textarea>
+
+<div
+class="counter"
+id="counter">
+0 characters
+</div>
+
+<br>
+
+<button
+class="primary-btn"
+onclick="saveMessage()">
+💾 Save Memory
+</button>
+
+<div
+id="status"
+class="status">
+</div>
+
+</div>
+
+
+<!-- QR -->
+
+<div
+id="qrBox"
+class="card qr-box">
