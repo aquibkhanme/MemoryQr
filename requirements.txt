@@ -1,4 +1,6 @@
 Flask
 qrcode[pil]
 gunicorn
-resend
+requests
+python-dotenv
+cloudinary

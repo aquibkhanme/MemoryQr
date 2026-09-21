@@ -1,0 +1,5 @@
+.env
+__pycache__/
+analytics.db
+memories/
+static/qr/
