@@ -81,11 +81,23 @@ let mid=null,photoFiles=[],videoFiles=[];
 const $=id=>document.getElementById(id);
 
 function addFiles(arr,list){
-  for(const f of Array.from(list||[])){
-    const key=f.name+'|'+f.size+'|'+f.lastModified+'|'+f.type;
-    if(!arr.some(x=>x._memoryKey===key))Object.defineProperty(f,'_memoryKey',{value:key});
-    if(!arr.some(x=>x._memoryKey===key))arr.push(f);
+  for(const f of Array.from(list || [])){
+    const key =
+      f.name + "|" +
+      f.size + "|" +
+      f.lastModified + "|" +
+      f.type;
+
+    if(!arr.some(x => x._memoryKey === key)){
+      Object.defineProperty(f,"_memoryKey",{
+        value:key,
+        enumerable:false
+      });
+
+      arr.push(f);
+    }
   }
+
   updateCounts();
 }
 function updateCounts(){
